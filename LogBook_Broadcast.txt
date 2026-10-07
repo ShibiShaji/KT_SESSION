@@ -1,0 +1,162 @@
+# LOGBOOK + BROADCAST — PARENT & NURSERY EMPLOYEE (NESTJS BACKEND)
+
+## OVERALL FLOW
+
+Flutter / Client Request (Teacher / Admin)
+↓
+POST /logbook/createConversation
+↓
+ConversationController
+↓
+ConversationRequestModel
+↓
+ConversationService
+↓
+HttpService (Axios Client)
+↓
+External Core Nursery API (`logbook/CreateConversation`)
+↓
+Response
+↓
+Flutter / Client
+
+---
+
+## KT EXPLANATION
+
+### 1. conversation.controller.ts
+Show: `ConversationController / createConversation()`
+File: `apps/nms-api/src/controllers/conversation.controller.ts` (lines 17–29)
+
+Explain:
+- Teacher or admin submits a new logbook message or broadcast notification to `POST /logbook/createConversation`.
+- The controller injects the active academic year from `AcademicYearCacheService` into `body.SelAcademicYearId`.
+- It delegates the enriched request body directly to `ConversationService.createConversation(body)`.
+- It serves as the entry controller without containing heavy data transport logic.
+
+↓
+
+### 2. conversationRequest.model.ts
+Show: `ConversationRequestModel`
+File: `apps/nms-api/src/providers/models/conversation/conversationRequest.model.ts` (lines 3–28)
+
+Explain:
+- Receives key communication fields: `subject`, `message`, `tagTypeId`, `kidInfoIds`, and `nurseriesWithClass`.
+- Holds broadcast & policy flags such as `isConsent`, `isMandatory`, `isStaff`, and `options`.
+- Guarantees valid schema structure across both individual student messaging and multi-class broadcast campaigns.
+
+↓
+
+### 3. conversation.service.ts
+Show: `ConversationService / createConversation()`
+File: `apps/nms-api/src/providers/services/conversation.service.ts` (lines 11–20)
+
+Explain:
+- The service encapsulates core business communication logic for nursery logbooks.
+- Takes the validated `model: ConversationRequestModel` and triggers `this.http.post()`.
+- Dispatches the request to the underlying Core Nursery API endpoint `logbook/CreateConversation`.
+- Delegates network transport, headers, and token attachment to `HttpService`.
+
+↓
+
+### 4. http.service.ts
+Show: `HttpService / post()`
+File: `packages/http/src/http.service.ts`
+
+Explain:
+- Acts as the shared HTTP client adapter connecting NestJS to external backend microservices.
+- Automatically resolves the bearer token from `RequestContext` and sets required headers.
+- Dispatches the Axios POST request and forwards the downstream response back to the service.
+
+↓
+
+### 5. DB / EXTERNAL API
+Show: Core Endpoint `logbook/CreateConversation`
+
+Explain:
+- Core Nursery backend creates the parent conversation record and maps recipient student logs in the DB.
+- Generates conversation threads, timestamps, and notification alerts for parents.
+- Returns the persisted `ConversationRequestModel` payload with generated IDs and status.
+
+↓
+
+### 6. RESPONSE
+Show: `ConversationController / createConversation()` (lines 27–28)
+
+Explain:
+- The created conversation object returns through `HttpService` to `ConversationService`.
+- `ConversationController` returns the completed `ConversationRequestModel` back to the Flutter client.
+- Flutter receives HTTP 201/200 confirmation and renders the new thread in the teacher UI.
+
+---
+
+## FILE ORDER TO SHOW IN KT
+
+1. `apps/nms-api/src/controllers/conversation.controller.ts` — Nursery Employee Logbook controller
+2. `apps/nms-api/src/providers/models/conversation/conversationRequest.model.ts` — Logbook & Broadcast message request DTO
+3. `apps/nms-api/src/providers/models/conversation/conversationLog.model.ts` — Thread reply and child log model
+4. `apps/nms-api/src/providers/services/conversation.service.ts` — Nursery Logbook business logic
+5. `apps/nms-api/src/controllers/postNms.controller.ts` — Broadcast student resolution & filtered list handler
+6. `apps/pms-api/src/controllers/parentNursery.controller.ts` — Parent Logbook entry point (PMS)
+7. `apps/pms-api/src/providers/services/parentNursery.service.ts` — Parent Logbook service implementation
+8. `packages/http/src/http.service.ts` — Unified HTTP client and auth token injector
+
+---
+
+## IMPORTANT SIDE FLOWS
+
+### 1. BROADCAST RECIPIENT RESOLUTION (NURSERY EMPLOYEE)
+Trigger: Teacher selects nursery, class, or section to broadcast a message to multiple students
+→ `POST /Parent/student/getBroadcastStudentsList?SelAcademicYearId=...`
+→ `apps/nms-api/src/controllers/postNms.controller.ts` → `getBroadcastStudentsList()`
+→ `apps/nms-api/src/providers/services/postNms.service.ts` → `getBroadcastStudentsList()`
+→ Core API `Parent/Student/GetBroadcastStudentsList`
+→ Returns target students array (`BroadCastStudentRequestModel[]`) to populate broadcast recipient list
+
+### 2. PARENT VIEWING CONVERSATIONS (PMS READ FLOW)
+Trigger: Parent opens the Logbook screen in the parent app
+→ `GET /pmslogbook/getConversationsByKid?kidInfoId=...&fromDate=...&toDate=...`
+→ `apps/pms-api/src/controllers/parentNursery.controller.ts` → `getConversationsByKid()`
+→ `apps/pms-api/src/providers/services/parentNursery.service.ts` → `getConversationsByKid()`
+→ `packages/http/src/http.service.ts` → `http.get('logbook/GetConversationsByKid', params, true)`
+→ Returns conversation threads, teacher messages, and broadcast announcements for that child
+
+### 3. PARENT INITIATING A CONVERSATION (PMS CREATE)
+Trigger: Parent sends a new logbook message to the nursery teacher
+→ `POST /pmslogbook/createConversationByParent`
+→ `apps/pms-api/src/controllers/parentNursery.controller.ts` → `createConversationByParent()`
+→ `apps/pms-api/src/providers/services/parentNursery.service.ts` → `createConversationByParent()`
+→ Core API `logbook/CreateConversationByParent`
+→ Returns created conversation thread and notifies nursery employee
+
+### 4. PARENT REPLYING TO CONVERSATION THREAD (PMS REPLY)
+Trigger: Parent replies to an existing logbook message from a teacher
+→ `POST /pmslogbook/replayConversationParent`
+→ `apps/pms-api/src/controllers/parentNursery.controller.ts` → `replayConversationParent()`
+→ `apps/pms-api/src/providers/services/parentNursery.service.ts` → `replayConversationParent()`
+→ Core API `logbook/ReplayConversationParent`
+→ Appends `ConversationLogModel` message under the existing conversation thread
+
+### 5. TEACHER / ADMIN REPLYING TO PARENT (NMS REPLY)
+Trigger: Nursery teacher or staff replies to a parent message
+→ `POST /logbook/replayConversationAdmin`
+→ `apps/nms-api/src/controllers/conversation.controller.ts` → `replayConversationAdmin()`
+→ `apps/nms-api/src/providers/services/conversation.service.ts` → `replayConversationAdmin()`
+→ Core API `logbook/ReplayConversationAdmin`
+→ Appends teacher's response log to the thread and triggers notification to the parent
+
+### 6. UNREAD CONVERSATION BADGE COUNT
+Trigger: App loads and checks for new/unread logbook messages
+→ `GET /logbook/getUnseenConversationCount?userId=...`
+→ `apps/nms-api/src/controllers/conversation.controller.ts` → `getUnseenConversationCount()`
+→ Resolves `selAcademicYearId` via `AcademicYearCacheService`
+→ `ConversationService.getUnseenConversationCount()` → Core API `logbook/GetUnseenConversationCount`
+→ Returns count of unseen messages for badge display
+
+### 7. AUTHENTICATION & ERROR HANDLING
+Trigger: Any client request to Logbook/Broadcast endpoints
+→ `RequestContext` extracts JWT token from incoming header
+→ `HttpService` attaches bearer token to downstream Core Nursery API call
+→ If Core API responds with error (400, 401, 500), Axios throws exception
+→ NestJS Global Exception Filter transforms error into standard response JSON
+→ Error returned to Flutter client
