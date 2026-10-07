@@ -1,0 +1,170 @@
+# OBSERVATION — PARENT & NURSERY EMPLOYEE (NESTJS BACKEND)
+
+## OVERALL FLOW
+
+Flutter App (Nursery Teacher / Staff)
+↓
+POST /childportfolio/addObservationForMultipleKids
+↓
+ObservationController
+↓
+AddMultipleKidObservationPayloadModel & PortFolioOberservationModel
+↓
+ObservationService
+↓
+HttpService (Axios Client)
+↓
+External Nursery Core API (`childportfolio/AddObservationForMultipleKids`)
+↓
+Response
+↓
+Flutter App
+
+---
+
+## KT EXPLANATION
+
+### 1. observation.controller.ts
+Show: `ObservationController / addObservationForMultipleKids()`
+File: `apps/nms-api/src/controllers/observation.controller.ts` (lines 134–143)
+
+Explain:
+- Teacher submits an observation note with media/tags for one or more kids to `POST /childportfolio/addObservationForMultipleKids`.
+- The controller receives the payload in `@Body() body: any` typed to `AddMultipleKidObservationPayloadModel`.
+- It delegates the request directly to `ObservationService.addObservationForMultipleKids(body)`.
+- The controller acts as the API gateway entry point without running heavy business logic itself.
+
+↓
+
+### 2. addMultipleKidObservationPayload.model.ts & portFolioOberservation.model.ts
+Show: `AddMultipleKidObservationPayloadModel` & `PortFolioOberservationModel`
+Files:
+- `apps/nms-api/src/providers/models/kid/addMultipleKidObservationPayload.model.ts` (lines 3–7)
+- `apps/nms-api/src/providers/models/observation/portFolioOberservation.model.ts` (lines 2–15)
+
+Explain:
+- `AddMultipleKidObservationPayloadModel` receives an array of student identifiers (`kidInfoIds`) and the `observation` object.
+- `PortFolioOberservationModel` captures observation details including `title`, `note`, `noteType`, `tags`, and audit fields (`createdBy`, `createdDate`).
+- This structured contract ensures teacher notes and target children are properly validated and structured before sending downstream.
+
+↓
+
+### 3. observation.service.ts
+Show: `ObservationService / addObservationForMultipleKids()`
+File: `apps/nms-api/src/providers/services/observation.service.ts` (lines 128–138)
+
+Explain:
+- The service encapsulates business operations for child portfolio observations.
+- It accepts `model: AddMultipleKidObservationPayloadModel` and invokes the HTTP client adapter.
+- It triggers `this.http.post()` pointing to the core backend endpoint `childportfolio/AddObservationForMultipleKids`.
+- The flow moves to `HttpService` to handle authentication tokens, headers, and downstream transmission.
+
+↓
+
+### 4. http.service.ts
+Show: `HttpService / post()`
+File: `packages/http/src/http.service.ts`
+
+Explain:
+- Acts as the unified communication layer/client between NestJS and the underlying Core Nursery API.
+- It resolves authentication tokens from the request context and attaches tenant headers.
+- It executes the HTTP POST request to the downstream microservice and handles low-level HTTP transport.
+
+↓
+
+### 5. EXTERNAL NURSERY CORE API / DB
+Show: Endpoint `childportfolio/AddObservationForMultipleKids`
+
+Explain:
+- The Core Nursery backend database creates observation portfolio records linked to each child ID in `kidInfoIds`.
+- It sets created timestamps, audit logs, and status flags in the database.
+- The Core API returns the newly created observation records and status confirmation.
+
+↓
+
+### 6. RESPONSE
+Show: `ObservationController / addObservationForMultipleKids()`
+File: `apps/nms-api/src/controllers/observation.controller.ts` (lines 141–142)
+
+Explain:
+- `HttpService` returns the parsed response payload back to `ObservationService`.
+- `ObservationService` delivers the result to `ObservationController`.
+- The controller sends the `AddMultipleKidObservationPayloadModel` JSON response directly back to the Flutter app with an HTTP 201/200 status.
+
+---
+
+## FILE ORDER TO SHOW IN KT
+
+1. `apps/nms-api/src/controllers/observation.controller.ts` — API entry point for Nursery employee
+2. `apps/nms-api/src/providers/models/kid/addMultipleKidObservationPayload.model.ts` — Multi-kid payload model
+3. `apps/nms-api/src/providers/models/observation/portFolioOberservation.model.ts` — Observation detail data model
+4. `apps/nms-api/src/providers/services/observation.service.ts` — Service business dispatch
+5. `packages/http/src/http.service.ts` — Shared HTTP transport & authentication header injector
+6. `apps/pms-api/src/controllers/parentNursery.controller.ts` — Parent viewing entry point (PMS)
+7. `apps/pms-api/src/providers/services/parentNursery.service.ts` — Parent observation fetching logic
+
+---
+
+## IMPORTANT SIDE FLOWS
+
+### 1. PARENT VIEWING OBSERVATIONS (READ FLOW)
+Flutter Parent App
+→ `GET /childportfolio/pmsgetAllPortfolioObservations?kidInfoId=...&date=...&noteType=...`
+→ `apps/pms-api/src/controllers/parentNursery.controller.ts` → `getAllPortfolioObservations()`
+→ `apps/pms-api/src/providers/services/parentNursery.service.ts` → `getAllPortfolioObservations()`
+→ `packages/http/src/http.service.ts` → `http.get('childportfolio/GetAllPortfolioObservations', params, true)`
+→ External Nursery Core API fetches child observation timeline
+→ Returns list of observation cards to Parent Flutter app
+
+### 2. SINGLE OBSERVATION CREATE (NURSERY EMPLOYEE)
+Flutter Teacher App
+→ `POST /childportfolio/createPortfolioObservation`
+→ `apps/nms-api/src/controllers/observation.controller.ts` → `createPortfolioObservation()`
+→ `apps/nms-api/src/providers/services/observation.service.ts` → `createPortfolioObservation()`
+→ `packages/http/src/http.service.ts` → `http.post('childportfolio/CreatePortfolioObservation', model)`
+→ Core Nursery API creates single portfolio observation record
+→ Returns created `PortFolioOberservationModel` to Flutter
+
+### 3. OBSERVATION UPDATE (NURSERY EMPLOYEE)
+Flutter Teacher App
+→ `POST /childportfolio/updatePortfolioObservation`
+→ `apps/nms-api/src/controllers/observation.controller.ts` → `updatePortfolioObservation()`
+→ `apps/nms-api/src/providers/services/observation.service.ts` → `updatePortfolioObservation()`
+→ `packages/http/src/http.service.ts` → `http.post('childportfolio/UpdatePortfolioObservation', model)`
+→ Core Nursery API updates observation note, tags, and last updated audit fields
+→ Returns updated `PortFolioOberservationModel` to Flutter
+
+### 4. OBSERVATION DELETE (NURSERY EMPLOYEE)
+Flutter Teacher App
+→ `POST /childportfolio/deletePortfolioObservation`
+→ `apps/nms-api/src/controllers/observation.controller.ts` → `deletePortfolioObservation()`
+→ `apps/nms-api/src/providers/services/observation.service.ts` → `deletePortfolioObservation()`
+→ `packages/http/src/http.service.ts` → `http.post('childportfolio/DeletePortfolioObservation', model)`
+→ Core Nursery API marks record as deleted (`isDeleted: true`)
+→ Returns confirmation to Flutter
+
+### 5. ADMIN / STAFF VIEWING ALL OBSERVATIONS (NURSERY EMPLOYEE)
+Flutter Teacher / Admin App
+→ `GET /childportfolio/getAllPortfolioObservationsForAdmin`
+→ `apps/nms-api/src/controllers/observation.controller.ts` → `getAllPortfolioObservationsForAdmin()`
+→ `apps/nms-api/src/providers/services/observation.service.ts` → `getAllPortfolioObservationsForAdmin()`
+→ `packages/http/src/http.service.ts` → `http.get('childportfolio/GetAllPortfolioObservationsForAdmin', query, true)`
+→ Core Nursery API returns unfiltered observation list for all nursery classes
+→ Returns array of observations to staff portal
+
+### 6. CACHE & ACADEMIC YEAR RESOLUTION (BUSINESS RULE)
+Flutter App
+→ `GET /childportfolio/getChildPortfolioDetailsOverview?studentId=...&kidInfoId=...`
+→ `apps/nms-api/src/controllers/observation.controller.ts` → `getChildPortfolioDetailsOverview()`
+→ Checks `selAcademicYearId ?? await this.academicYearCache.getCurrentAcademicYearId()`
+→ Injects active academic year if not supplied in query
+→ `ObservationService.getChildPortfolioDetailsOverview()` → Core API
+→ Returns child portfolio overview scoped to the active academic year
+
+### 7. AUTHENTICATION & ERROR HANDLING
+Request from Flutter
+→ `packages/http/request.context.ts` extracts bearer token from incoming request context
+→ `packages/http/src/http.service.ts` attaches auth token to downstream request
+→ If downstream Core API returns 401/404/500, Axios interceptor catches error
+→ NestJS Global Exception Filter transforms error into standard HTTP response
+→ Flutter client receives structured error message

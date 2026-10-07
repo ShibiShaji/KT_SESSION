@@ -1,0 +1,197 @@
+# OBSERVATION (PARENT & NURSERY EMPLOYEE)
+
+## OVERALL FLOW — NURSERY EMPLOYEE (TEACHER / STAFF)
+
+Classroom Screen / Student Record
+↓
+classrooms.dart / card["label"] == observation
+↓
+nurseryObservation.dart / _buildObservationsList()
+↓
+getAllPortfolioObservationsProvider
+↓
+ObservationRepository / getAllPortfolioObservations()
+↓
+GET /childportfolio/getAllPortfolioObservations
+↓
+List<PortFolioOberservation> Response
+↓
+ObservationCard / ObservationBottomSheet
+
+---
+
+## OVERALL FLOW — PARENT
+
+Parent Dashboard / Observation Tile
+↓
+observation.dart / _buildChildCard()
+↓
+observationDetailPage.dart / pmsGetAllPortfolioObservationsProvider
+↓
+ObservationRepository / pmsGetAllPortfolioObservations()
+↓
+GET /childportfolio/pmsgetAllPortfolioObservations
+↓
+List<PortFolioOberservation> Response
+↓
+ObservationCard / ObservationBottomSheet
+
+---
+
+## KT EXPLANATION — NURSERY EMPLOYEE FLOW
+
+### 1. lib/screens/parent/classroom/classrooms.dart
+**Show:** `Classrooms` / Student Records Grid (`card["label"] == translation(context).observation`)
+
+**Explain:**
+- Nursery employee opens the student record within a classroom.
+- Clicking the Observation card triggers navigation to `/nursery-observation`.
+- Passes the student's `childData`, `kidInfoId` (student ID), and `selAcademicYearId` in the route arguments.
+
+↓
+
+### 2. lib/screens/nursery/observation/nurseryObservation.dart
+**Show:** `NurseryObservationPage` / `_buildObservationsList()`
+
+**Explain:**
+- Displays the student header card (`StudentCard`) with child name, class, and direct chat shortcut.
+- Reads `getAllPortfolioObservationsProvider` passing `kidInfoId`, `pageNumber: 1`, and `pageSize: 5`.
+- Watches the provider state (loading skeleton, error, and data list) and renders each observation into an `ObservationCard`.
+
+↓
+
+### 3. lib/screens/nursery/observation/repository/observationRepositoryProvider.dart
+**Show:** `getAllPortfolioObservationsProvider`
+
+**Explain:**
+- Riverpod `FutureProvider.family` bridging the Nursery UI with the observation repository.
+- Receives query filter params (`kidInfoId`, `date`, `pageNumber`, `pageSize`).
+- Calls `observationRepository.getAllPortfolioObservations()` to fetch observations from the nursery management service.
+
+↓
+
+### 4. lib/screens/nursery/observation/repository/observationRepository.dart
+**Show:** `ObservationRepository.getAllPortfolioObservations()`
+
+**Explain:**
+- Builds query parameters map containing `kidInfoId`, `pageNumber`, and optional date filters.
+- Executes a Dio GET request to `${baseUrlNMSProvider}/childportfolio/getAllPortfolioObservations`.
+- Parses the JSON array into `List<PortFolioOberservation>`.
+
+↓
+
+### 5. API
+**Show:** `GET /childportfolio/getAllPortfolioObservations` (NMS Service)
+
+**Explain:**
+- Retrieves all observation records created for the given child in the nursery system.
+- Query parameters: `kidInfoId`, `pageNumber`, `pageSize`, `date`.
+- Response: JSON array containing observation IDs, titles, notes, tags, author, and updated dates.
+
+↓
+
+### 6. lib/screens/nursery/observation/observationCard.dart & observationBottomSheet.dart
+**Show:** `ObservationCard.onTap` → `ObservationBottomSheet.show()`
+
+**Explain:**
+- Each item is displayed as a clean card showing the title, formatted date, author, and dynamic colored tags (Health, Milestone, Vaccine, Academic).
+- Tapping the card opens `ObservationBottomSheet` showing the full note description and author timestamp.
+
+---
+
+## KT EXPLANATION — PARENT FLOW
+
+### 1. lib/screens/dashboard/parentDashboard/components/parentWidget.dart
+**Show:** `ParentWidget` / `routeMap[translation(context).observation]`
+
+**Explain:**
+- Parent taps the "Observation" shortcut tile from the Parent Dashboard.
+- The app navigates to `/observation` (`Observation` screen).
+
+↓
+
+### 2. lib/screens/nursery/observation/observation.dart
+**Show:** `_ObservationState.build()` & `_buildChildCard()`
+
+**Explain:**
+- Watches `getKidsDetailsByParentIdProvider((parentId: null))` to load all enrolled children for the parent.
+- Pre-fetches profile pictures asynchronously via `ApplicationRepository.fetchPresignedUrl()`.
+- Tapping a child card executes `context.push('/observation-details', extra: {'childData': ..., 'kidInfoId': child.kidId})`.
+
+↓
+
+### 3. lib/screens/nursery/observation/observationDetailPage.dart
+**Show:** `ObservationDetailsPage.build()` lines 57–72
+
+**Explain:**
+- Reads the child's `kidInfoId` and watches `pmsGetAllPortfolioObservationsProvider`.
+- Supports date filtering via `FilterBasedOnDates` and `dateRangeProvider`.
+- Displays observation cards or an empty state when no observations exist for the child.
+
+↓
+
+### 4. lib/screens/nursery/observation/repository/observationRepositoryProvider.dart
+**Show:** `pmsGetAllPortfolioObservationsProvider`
+
+**Explain:**
+- Riverpod provider used specifically by the Parent side to query the Parent Management Service (PMS).
+- Calls `observationRepository.pmsGetAllPortfolioObservations()` passing `kidInfoId` and formatted date range.
+
+↓
+
+### 5. lib/screens/nursery/observation/repository/observationRepository.dart
+**Show:** `ObservationRepository.pmsGetAllPortfolioObservations()`
+
+**Explain:**
+- Prepares query parameters and executes Dio GET to `${baseUrlPMSProvider}/childportfolio/pmsgetAllPortfolioObservations`.
+- Validates the response status and converts the JSON array into `List<PortFolioOberservation>`.
+
+↓
+
+### 6. API
+**Show:** `GET /childportfolio/pmsgetAllPortfolioObservations` (PMS Service)
+
+**Explain:**
+- Returns approved child observations visible to the parent.
+- Query parameters: `kidInfoId`, `date` (YYYY-MM-DD,YYYY-MM-DD range).
+- Returns list of observation records with title, tags, description, and author.
+
+↓
+
+### 7. lib/screens/nursery/observation/observationBottomSheet.dart
+**Show:** `ObservationBottomSheet.show()` & `_buildDynamicTags()`
+
+**Explain:**
+- Opens a modal bottom sheet displaying the observation title, colored category pills, full note text, and updated date.
+- Formats tag codes ('1' -> Health, '2' -> Milestones, '3' -> Vaccine, '4' -> Academic).
+
+---
+
+## FILE ORDER TO SHOW (COMPLETE KT)
+
+1. `lib/screens/parent/classroom/classrooms.dart` — Nursery Employee entry point (Student Records)
+2. `lib/screens/nursery/observation/nurseryObservation.dart` — Nursery Employee observation list & filter
+3. `lib/screens/dashboard/parentDashboard/components/parentWidget.dart` — Parent entry point (Dashboard)
+4. `lib/screens/nursery/observation/observation.dart` — Parent child selector screen
+5. `lib/screens/nursery/observation/observationDetailPage.dart` — Parent observation listing screen
+6. `lib/screens/nursery/observation/observationCard.dart` — Shared observation card widget
+7. `lib/screens/nursery/observation/observationBottomSheet.dart` — Shared full detail bottom sheet
+8. `lib/screens/nursery/observation/repository/observationRepositoryProvider.dart` — Riverpod providers (NMS vs PMS)
+9. `lib/screens/nursery/observation/repository/observationRepository.dart` — Dio API repository implementation
+10. `lib/screens/nursery/observation/models/portFolioOberservationModel.dart` — Shared observation data model
+
+---
+
+## IMPORTANT SIDE FLOWS
+
+### 1. Date Range Filter
+`Tap Calendar Icon → FilterBasedOnDates → nurseryDateRangeProvider / dateRangeProvider → Re-fetches / filters observations by date → UI updates`
+
+### 2. Nursery Employee Direct Chat with Parent
+`Tap Message Icon on StudentCard in nurseryObservation.dart → Constructs ChatKidModel → context.push('/chat-screen') → Opens real-time teacher-to-parent chat`
+
+### 3. Parent Quick-Info Overlay in Observation Screen
+`Tap Info Icon on ChildHealthCard in observation.dart → _showParentInfoContainer() → Fetches family/guardian info → Displays contact popup`
+
+### 4. Observation Creation & Multi-Kid Batch Addition (Backend/Repo Capability)
+`Staff creates observation → addObservationForMultipleKidsProvider / createPortfolioObservationProvider → ObservationRepository.createPortfolioObservation() → POST /childportfolio/createPortfolioObservation`
