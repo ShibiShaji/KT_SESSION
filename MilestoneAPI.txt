@@ -1,0 +1,132 @@
+# MILESTONE
+
+## OVERALL FLOW
+
+Flutter / Client Request
+↓
+GET /childportfolio/getAllPortFolioMilestones
+↓
+MilestoneController
+↓
+PortFolioMilestoneModel (Schema)
+↓
+MilestoneService
+↓
+HttpService (External API Gateway Client)
+↓
+Upstream Core API (NMS / Oracle)
+↓
+Response (PortFolioMilestoneModel[])
+↓
+Flutter / Client
+
+## KT EXPLANATION
+
+### 1. milestone.controller.ts
+Show: `MilestoneController / getAllPortFolioMilestones()`
+
+Explain:
+- Receives the HTTP GET request sent by Flutter for milestone portfolio listings.
+- Extracts `@Query() query` parameters including `kidInfoId`, `date`, `startDate`, `endDate`, and `pageSize`.
+- Passes the sanitized query object directly into `MilestoneService`.
+
+↓
+
+### 2. portFolioMilestone.model.ts
+Show: `PortFolioMilestoneModel`
+
+Explain:
+- Defines the data contract for milestones returned across the backend and mobile clients.
+- Encapsulates key properties such as `kidInfoId`, `milestoneTitle`, `milestoneType`, `milestoneAttachments`, and `milestoneBehaviours`.
+- Guarantees strongly typed serialization between the upstream core API and NestJS.
+
+↓
+
+### 3. milestone.service.ts
+Show: `MilestoneService / getAllPortFolioMilestones()`
+
+Explain:
+- Acts as the business domain layer for milestone portfolio operations.
+- Structures parameters into query criteria and delegates the upstream network call to `HttpService`.
+- Calls `this.http.get<PortFolioMilestoneModel[]>('childportfolio/GetAllPortFolioMilestones', params, true)`.
+
+↓
+
+### 4. http.service.ts
+Show: `HttpService / get()`
+
+Explain:
+- Central HTTP client (`packages/http`) configured by `DefaultNMSHttpModules()`.
+- Automatically injects basic auth credentials and tenancy headers for upstream communication.
+- Dispatches the Axios GET call against the upstream base URL (`baseURL: process.env.NMS_API_URL`).
+
+↓
+
+### 5. DB / EXTERNAL API
+Show: `GET ${NMS_API_URL}/childportfolio/GetAllPortFolioMilestones`
+
+Explain:
+- Upstream core service queries the student database / Oracle datastore for milestone records.
+- Filters by `kidInfoId` and the requested date or date range (`startDate` to `endDate`).
+- Returns the raw array of milestone objects with nested learning standards and attachment metadata.
+
+↓
+
+### 6. RESPONSE
+Show: `MilestoneController / getAllPortFolioMilestones()` return response
+
+Explain:
+- The upstream JSON response is resolved by `HttpService` and passed back through `MilestoneService`.
+- Returned as a typed `Promise<PortFolioMilestoneModel[]>` from the controller with HTTP 200.
+- Sent directly to Flutter to populate milestone cards and observations.
+
+## FILE ORDER TO SHOW
+
+1. `apps/nms-api/src/controllers/milestone.controller.ts` — API entry point
+2. `apps/nms-api/src/providers/models/milestone/portFolioMilestone.model.ts` — data model & contract
+3. `apps/nms-api/src/providers/services/milestone.service.ts` — service business logic
+4. `packages/http/src/http.service.ts` — HTTP client & auth injection
+5. `apps/nms-api/src/moduleInit.ts` — upstream base URL & credentials config
+6. `apps/nms-api/src/controllers/milestone.controller.ts` — final controller response return
+
+## IMPORTANT SIDE FLOWS
+
+### 1. Side Flow — Bulk Milestone for Multiple Kids
+Staff selects multiple kids in classroom
+→ `apps/nms-api/src/controllers/milestone.controller.ts`
+→ `addMilestoneForMultipleKids()`
+→ `MilestoneService.addMilestoneForMultipleKids()`
+→ `POST childportfolio/AddMilestoneForMultipleKids`
+→ Upstream links milestone to all kidInfoIds simultaneously
+
+### 2. Side Flow — Create Single Milestone
+Staff creates milestone observation
+→ `apps/nms-api/src/controllers/milestone.controller.ts`
+→ `createPortFolioMilestone()`
+→ `MilestoneService.createPortFolioMilestone()`
+→ `POST childportfolio/CreatePortFolioMilestone`
+→ Upstream creates milestone record and returns created object
+
+### 3. Side Flow — Update Milestone
+Staff edits milestone title/description/behaviours
+→ `apps/nms-api/src/controllers/milestone.controller.ts`
+→ `updatePortFolioMilestone()`
+→ `MilestoneService.updatePortFolioMilestone()`
+→ `POST childportfolio/UpdatePortFolioMilestone`
+→ Upstream updates milestone and returns updated object
+
+### 4. Side Flow — Delete Milestone
+Staff deletes milestone
+→ `apps/nms-api/src/controllers/milestone.controller.ts`
+→ `deletePortFolioMilestone()`
+→ `MilestoneService.deletePortFolioMilestone()`
+→ `POST childportfolio/DeletePortFolioMilestone`
+→ Upstream soft-deletes the record
+
+### 5. Side Flow — Parent Milestone Listing (PMS Gateway)
+Parent requests milestones from parent app
+→ `apps/pms-api/src/controllers/parentNursery.controller.ts`
+→ `getAllPortFolioMilestones()` (`@Get('pmschildportfolio/getAllPortFolioMilestones')`)
+→ `ParentNurseryService.getAllPortFolioMilestones()`
+→ `HttpService.get('childportfolio/GetAllPortFolioMilestones')`
+→ Returns parent-filtered milestones
