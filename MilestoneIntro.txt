@@ -1,0 +1,105 @@
+# MILESTONE — FEATURE INTRODUCTION & UI WALKTHROUGH
+
+## 1. WHAT IS MILESTONE? (THE CORE PURPOSE IN SIMPLE WORDS)
+
+Milestone is the child portfolio and developmental growth tracking feature of the nursery application.
+
+In early childhood education, nurseries track each child's learning journey across standardized developmental milestones (cognitive, physical, language, social-emotional).
+Milestone provides:
+- A visual portfolio of a child's learning progress and developmental achievements.
+- Clear separation between Academic and Non-Academic milestones.
+- Evidence-based logging: every milestone is backed by real classroom photos, videos, and mapped assessment standards/behaviours.
+- Transparent reporting for parents to celebrate and review their child's achievements at home.
+
+---
+
+## 2. WHO USES IT? (USER ROLES & WHAT THEY DO)
+
+### 1. Parent (PMS App User)
+- Selects from their enrolled children on the Milestone screen.
+- Explores their child's portfolio timeline and filter by Academic or Non-Academic achievements.
+- Filters achievements by specific dates or calendar ranges.
+- Taps any milestone to view detailed teacher observations, learning standards, and attached classroom photos or videos.
+
+### 2. Nursery Teacher / Staff (NMS App User)
+- Navigates through the Classroom student roster and selects a student under the Milestone flow.
+- Reviews student milestone history to assess developmental readiness and curriculum progress.
+- Accesses direct student messaging via the in-card "Chat" shortcut to discuss specific milestones with parents.
+
+---
+
+## 3. WHAT ARE THE MAIN VIEWS? (UI EXPLAINED IN SIMPLE WORDS)
+
+### View 1: Child Selection Screen (milestoneScreen.dart)
+This is the entry screen for parents from their dashboard.
+
+- Child Photo Grid:
+  Displays a 2-column grid of all enrolled children belonging to the logged-in parent.
+- Child Card Information:
+  Shows child photo avatar, full name, class grade, section, and nursery name.
+- Tap Action:
+  Tapping a child card passes the child details (`KidDetailsModel`) and opens their dedicated milestone portfolio screen.
+
+*(For Nursery Staff, this entry happens via `classroomStudentList.dart`, where teachers pick a student from their assigned classroom).*
+
+---
+
+### View 2: Milestone Portfolio & Listing Screen (milestoneChildCardDetails.dart)
+This is the core portfolio feed showing all milestones logged for the selected child.
+
+- Top Header Card (Staff View):
+  Displays child avatar, full name (English / Arabic), student code, grade, section, and an action button to open a direct chat.
+
+- Date Filter Bar:
+  • Calendar Icon (`FilterBasedOnDates`): Allows filtering by a single date or custom date range.
+  • Selected Date Display: Shows formatted active date chip with a "Clear Filters" button.
+
+- Category Filter Toggle Buttons:
+  A horizontal pill toggle bar to filter achievements:
+  • "All": Shows all recorded milestones.
+  • "Academic": Filters for academic milestones (`milestoneType == 1`).
+  • "Non-Academic": Filters for physical/social/creative milestones (`milestoneType != 1`).
+
+- Milestone Card Feed:
+  Each card in the feed represents a milestone event:
+  • Header: Milestone title (in English or Arabic), a separator dot, and creation date (`dd/MM/yyyy`).
+  • Category Pill: Color-coded tag (purple for Academic, blue for Non-Academic).
+  • Description: Full teacher observation notes.
+  • Media Thumbnail Carousel: Horizontal scrolling preview of attached photos or video thumbnails.
+  • Tap Action: Tapping the card opens the detailed Bottom Sheet breakdown.
+
+---
+
+### View 3: Detailed Breakdown Bottom Sheet (milestoneChildCardDetails.dart)
+Tapping any milestone card slides up a comprehensive modal bottom sheet.
+
+- Milestone Summary:
+  Displays the milestone title, category pill, and complete observation description.
+
+- Learning Standards & Behaviours Accordions:
+  Learning behaviours are automatically grouped by Assessment Standards:
+  • Accordion Header: Standard category title (e.g. "Physical Development", "Communication Skills") with an expand/collapse arrow.
+  • Expanded List: Individual developmental behaviours and teacher assessments mapped under that standard.
+
+- Attachments Grid (Photos & Videos):
+  • Displays all supporting media in a 3-column photo grid.
+  • Video items feature a video play thumbnail badge.
+  • Tapping any media fetches secure presigned URLs from S3 and launches:
+    - Fullscreen Photo Viewer (`MilestoneFullscreenViewer`) for high-resolution images.
+    - Embedded Video Player (`VideoPlayerScreen`) for `.mp4` video recordings.
+
+---
+
+## 4. KEY HIGHLIGHTS TO SAY IN YOUR KT (CHEAT SHEET)
+
+1. Dual-Audience Unified UI:
+   "Both parents and nursery teachers view the portfolio using the exact same detail screen (milestoneChildCardDetails.dart), but the backend adapts endpoints dynamically depending on whether isNurseryUser is true or false."
+
+2. Multi-Media Evidence:
+   "Milestones aren't just dry text scores. They are visual portfolios with direct photo and video evidence fetched securely via presigned S3 URLs."
+
+3. Structured Early-Years Standards:
+   "Inside the bottom sheet, observations are grouped under specific curriculum standards (Assessment Standard → Behaviours), giving parents deep insight into their child's cognitive and physical milestones."
+
+4. Dynamic Categorization & Date Range Filtering:
+   "Parents can toggle between Academic and Non-Academic milestones, or use the calendar filter to review milestones achieved during a specific week or month."
