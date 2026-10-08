@@ -1,0 +1,124 @@
+# BROADCAST
+
+## OVERALL FLOW
+
+Flutter / Client Request
+↓
+POST /logbook/createConversation
+↓
+ConversationController
+↓
+ConversationRequestModel (Validation & Schema)
+↓
+ConversationService
+↓
+HttpService (External API Gateway Client)
+↓
+Upstream Core API (NMS / Oracle)
+↓
+Response (CreateConversationResponse)
+↓
+Flutter / Client
+
+## KT EXPLANATION
+
+### 1. conversation.controller.ts
+Show: `ConversationController / createConversation()`
+
+Explain:
+- Receives the HTTP POST request when staff (Principal, Teacher, Nurse) publishes a broadcast.
+- Resolves the current academic year using `AcademicYearCacheService` and injects `SelAcademicYearId`.
+- Forwards the validated broadcast payload to `ConversationService`.
+
+↓
+
+### 2. conversationRequest.model.ts
+Show: `ConversationRequestModel`
+
+Explain:
+- Defines the broadcast payload and audience targeting schema.
+- Encapsulates key fields: `subject`, `message`, `tagTypeId` (Principal=2, Teacher=3, Nurse=4), `isConsent`, `isMandatory`, and targeting arrays (`nurseryIds`, `nurseriesWithClass`, `kidInfoIds`).
+- Guarantees strongly typed contracts between the NestJS gateway and the upstream core system.
+
+↓
+
+### 3. conversation.service.ts
+Show: `ConversationService / createConversation()`
+
+Explain:
+- Handles the business logic for creating broadcast announcements.
+- Prepares the request model and delegates the upstream network call to `HttpService`.
+- Executes `this.http.post<ConversationRequestModel>('logbook/CreateConversation', model)`.
+
+↓
+
+### 4. http.service.ts
+Show: `HttpService / post()`
+
+Explain:
+- Central HTTP gateway client provided by `packages/http` and registered in `DefaultNMSHttpModules()`.
+- Automatically injects basic auth credentials, tenancy headers, and content-type headers.
+- Dispatches the Axios POST request to the upstream core server (`baseURL: process.env.NMS_API_URL`).
+
+↓
+
+### 5. DB / EXTERNAL API
+Show: `POST ${NMS_API_URL}/logbook/CreateConversation`
+
+Explain:
+- Upstream service creates the master broadcast record in Oracle/database.
+- Automatically generates recipient conversation logs for all targeted students and parents across selected classrooms.
+- Returns the created conversation ID and status confirmation.
+
+↓
+
+### 6. RESPONSE
+Show: `ConversationController / createConversation()` return response
+
+Explain:
+- The response is received from `HttpService`, passed through `ConversationService`, and returned by the controller.
+- The controller returns a typed `Promise<ConversationRequestModel>` with HTTP 201/200.
+- Flutter closes the composer and refreshes the broadcast listing dashboard.
+
+## FILE ORDER TO SHOW
+
+1. `apps/nms-api/src/controllers/conversation.controller.ts` — API entry point
+2. `apps/nms-api/src/providers/models/conversation/conversationRequest.model.ts` — request schema & targeting
+3. `apps/nms-api/src/providers/services/conversation.service.ts` — service business logic
+4. `packages/http/src/http.service.ts` — HTTP client & auth injection
+5. `apps/nms-api/src/moduleInit.ts` — upstream base URL & credentials config
+6. `apps/nms-api/src/controllers/conversation.controller.ts` — final controller response return
+
+## IMPORTANT SIDE FLOWS
+
+### 1. Side Flow — Broadcast Listing & Compliance Metrics
+Staff opens broadcast dashboard to view announcements with response badges
+→ `apps/nms-api/src/controllers/conversation.controller.ts`
+→ `postConversations()` (`POST /logbook/getConversations`)
+→ `ConversationService.postConversations()`
+→ `POST ${NMS_API_URL}/logbook/GetConversations`
+→ Returns broadcasts list with live counts (`acceptedCount`, `rejectedCount`, `notRespondedCount`)
+
+### 2. Side Flow — Parent Consent Action (Accept / Reject in Chat)
+Parent taps Accept or Reject on the interactive broadcast card in Logbook
+→ `apps/nms-api/src/controllers/conversation.controller.ts`
+→ `replayConversationParent()` (`POST /logbook/replayConversationParent`)
+→ `ConversationService.replayConversationParent()`
+→ `POST ${NMS_API_URL}/logbook/ReplayConversationParent`
+→ Upstream updates parent response (`isAccepected: true/false`) and timestamp
+
+### 3. Side Flow — Live Compliance Tracking (Who Responded)
+Staff clicks on a broadcast to view individual parent responses
+→ `apps/nms-api/src/controllers/conversation.controller.ts`
+→ `getConversationsLogByConversationId()` (`GET /logbook/getConversationsLogByConversationId`)
+→ `ConversationService.getConversationsLogByConversationId()`
+→ `GET ${NMS_API_URL}/logbook/GetConversationsLogByConversationId`
+→ Upstream returns list of parent logs categorized by `isAccepected` status (true=Accepted, false=Rejected, null=Pending)
+
+### 4. Side Flow — Broadcast Creation by Admin
+Admin creates elevated administrative broadcast
+→ `apps/nms-api/src/controllers/conversation.controller.ts`
+→ `createConversationByAdmin()` (`POST /logbook/createConversationByAdmin`)
+→ `ConversationService.createConversationByAdmin()`
+→ `POST ${NMS_API_URL}/logbook/CreateConversationByAdmin`
+→ Upstream links broadcast with administrative privileges
