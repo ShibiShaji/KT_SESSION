@@ -1,0 +1,137 @@
+# MILESTONE
+
+## OVERALL FLOW
+
+Select Child Screen (Parent / Classroom)
+↓
+milestoneScreen.dart / classroomStudentList.dart
+↓
+router.dart (/milestone-details)
+↓
+milestoneChildCardDetails.dart
+↓
+portfolioMilestonesProvider
+↓
+MilestoneRepository
+↓
+GET /pmschildportfolio/getAllPortFolioMilestones (or NMS endpoint)
+↓
+List<Portfoliomilestone>
+↓
+Milestone Cards & Filtered List UI
+
+## KT EXPLANATION
+
+### 1. milestoneScreen.dart
+**Show:** `MilestoneScreen.build` & `MilestoneChildDetailsScreen(onTap)`
+
+**Explain:**
+- Displays the grid of enrolled children for the logged-in parent.
+- When the parent taps on a child card, `onTap` triggers navigation with the selected child's data.
+- It calls `context.push('/milestone-details', extra: childWrapper.raw)` to open the milestone portfolio for that child.
+
+↓
+
+### 2. router.dart
+**Show:** `GoRoute(path: '/milestone-details')`
+
+**Explain:**
+- Intercepts the route and extracts the passed arguments from `state.extra`.
+- Normalizes whether the extra is a `KidDetailsModel` (from parent screen) or `StudentListModel` (from classroom screen).
+- Instantiates and opens `MilestoneChildCardDetailScreen` passing the unified `StudentListModel`.
+
+↓
+
+### 3. milestoneChildCardDetails.dart
+**Show:** `_MilestoneChildCardDetailScreenState.build` & `milestonesAsync`
+
+**Explain:**
+- Resolves the current user role (`userRoleProvider`) to distinguish between Parent (PMS) and Staff (NMS).
+- Reads active calendar filters from `milestoneDateRangeProvider` and watches `portfolioMilestonesProvider`.
+- Triggers the provider with the child's `kidInfoId`, pagination params, and selected date range.
+
+↓
+
+### 4. milestoneRepositoryProvider.dart
+**Show:** `portfolioMilestonesProvider`
+
+**Explain:**
+- Connects the UI layer to `MilestoneRepository` using Riverpod `FutureProvider.autoDispose.family`.
+- Receives the parameter record `(kidInfoId, page, limit, selectedDate, startDate, endDate, isNurseryUser)`.
+- Calls and returns `MilestoneRepository.getAllPortFolioMilestones()`.
+
+↓
+
+### 5. milestoneRepository.dart
+**Show:** `getAllPortFolioMilestones()`
+
+**Explain:**
+- Dynamically selects the base URL and endpoint depending on whether `isNurseryUser` is true or false.
+- Formats dates into ISO format (`yyyy-MM-dd'T'00:00:00`) and builds query parameters.
+- Dispatches the HTTP GET request using `Dio`.
+
+↓
+
+### 6. API
+**Show:** `GET /pmschildportfolio/getAllPortFolioMilestones` (Parent) / `GET /childportfolio/getAllPortFolioMilestones` (Staff)
+
+**Explain:**
+- Fetches all portfolio milestones and learning observations logged for the given kid.
+- Sends query params: `kidInfoId`, `pageNumber`, `pageSize`, and optional `date` or `startDate`/`endDate`.
+- Returns an array of milestone objects containing title, description, milestoneType, attachments, and behaviours.
+
+↓
+
+### 7. milestoneChildCardDetails.dart (Response & UI)
+**Show:** `milestonesAsync.when()` & `_buildMilestoneCard()`
+
+**Explain:**
+- Parses JSON objects into `List<Portfoliomilestone>` models.
+- Applies tab filtering on the fly: All, Academic (`milestoneType == 1`), or Non-Academic (`milestoneType != 1`).
+- Renders cards displaying milestone title, formatted date (`dd/MM/yyyy`), category chip, description, and media preview.
+
+## FILE ORDER TO SHOW
+
+1. `lib/screens/parent/milestone/milestoneScreen.dart` — entry point (select child)
+2. `lib/router.dart` — route argument unpacking (`/milestone-details`)
+3. `lib/screens/parent/milestone/milestoneChildCardDetails.dart` — main UI & provider watcher
+4. `lib/screens/nursery/milestone/repository/milestoneRepositoryProvider.dart` — Riverpod provider
+5. `lib/screens/nursery/milestone/repository/milestoneRepository.dart` — API request & URL switching
+6. `lib/screens/parent/milestone/milestoneChildCardDetails.dart` — response rendering & card tap
+
+## IMPORTANT SIDE FLOWS
+
+### 1. Side Flow — Staff / Classroom Entry
+Classroom student selection
+→ `lib/screens/parent/classroom/classroomStudentList.dart`
+→ `_handleStudentTap()` (`case "milestone"`)
+→ Navigates to `/milestone-details` with `{"student": student, "from": "classroom"}`
+→ `MilestoneChildCardDetailScreen` detects staff role and uses NMS endpoints
+
+### 2. Side Flow — Date Range Filtering
+User selects date or range in calendar
+→ `lib/screens/parent/milestone/milestoneChildCardDetails.dart`
+→ `FilterBasedOnDates` updates `milestoneDateRangeProvider`
+→ Automatically recomputes parameters and triggers `portfolioMilestonesProvider`
+→ Repository sends formatted `date` or `startDate`/`endDate` query params
+
+### 3. Side Flow — Milestone Detail Breakdown (BottomSheet)
+User taps on any milestone card
+→ `lib/screens/parent/milestone/milestoneChildCardDetails.dart`
+→ `_showBottomSheet()`
+→ Groups `milestoneBehaviours` by `assesmentStandardName` into accordion tiles
+→ Displays learning standards and individual assessment behaviours
+
+### 4. Side Flow — Media Attachment Viewer (Image / Video)
+User taps an image or video thumbnail
+→ `lib/screens/parent/milestone/milestoneChildCardDetails.dart`
+→ Calls `ApplicationRepository.fetchPresignedUrl(attachmentKey)`
+→ Fetches raw media bytes via secure presigned download URL
+→ Opens `MilestoneFullscreenViewer` for photos or `VideoPlayerScreen` for `.mp4`
+
+### 5. Side Flow — Offline Handling & Pull-to-Refresh
+Internet reconnects or user pulls to refresh
+→ `lib/screens/parent/milestone/milestoneChildCardDetails.dart`
+→ `_refreshMilestones()`
+→ Invalidates `portfolioMilestonesProvider` and resets active filters
+→ Re-executes the API call and updates UI seamlessly
