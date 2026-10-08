@@ -1,0 +1,128 @@
+# BROADCAST — FEATURE INTRODUCTION & UI WALKTHROUGH
+
+## 1. WHAT IS BROADCAST? (THE CORE PURPOSE IN SIMPLE WORDS)
+
+Broadcast is the official one-to-many announcement and compliance broadcasting system in the nursery application.
+
+While regular Logbook is a private 1-on-1 conversation between a staff member and a parent, Broadcast allows authorized nursery staff to push an official circular, emergency alert, or consent form to entire classrooms, sections, or the entire nursery at once.
+
+Key distinction:
+- It is NOT just a notification.
+- It is an interactive, legally tracked notice where parents must formally respond (Accept / Reject / Acknowledge).
+- Staff can monitor real-time compliance metrics (e.g. 24 Accepted, 2 Rejected, 4 Pending).
+
+---
+
+## 2. WHO USES IT? (USER ROLES & WHAT THEY DO)
+
+### 1. Principal / Nursery Admin (NMS Staff)
+- Has nursery-wide broadcasting authority.
+- Pushes school closures, holiday circulars, administrative policies, and event announcements under the Principal tab.
+- Tracks nursery-wide parent participation and acknowledgment rates.
+
+### 2. Teacher (NMS Staff)
+- Creates classroom-level announcements under the Teacher tab.
+- Broadcasts upcoming field trips, project material requests, or weekly curriculum summaries to their assigned classes.
+- Tracks which parents approved permission slips for upcoming class events.
+
+### 3. Nurse (NMS Staff)
+- Sends medical advisories under the Nurse tab.
+- Broadcasts seasonal health alerts (e.g. flu outbreaks, lice checks) and vaccination consent forms to parents.
+- Identifies parents who have not responded to urgent health notices.
+
+### 4. Parent (PMS App User)
+- Receives the broadcast notice embedded directly inside the child's Logbook conversation timeline.
+- Reads the notice with its official badge and role tag.
+- For Consent/Mandatory notices, taps "Accept" or "Reject", immediately recording their choice and timestamp.
+
+---
+
+## 3. WHAT ARE THE MAIN VIEWS? (UI EXPLAINED IN SIMPLE WORDS)
+
+### View 1: Broadcast Listing Dashboard (broadcastInitial.dart)
+This is the staff's management screen showing all past and active broadcasts.
+
+- Role Tabs (CustomMainTabBar):
+  Tabs for Principal, Teacher, and Nurse. Switching tabs filters broadcasts by author role.
+
+- Search & Filter Controls:
+  • Search input: Filter by broadcast subject or content keyword.
+  • Filter Icon: Filter by classroom/section or specific date.
+
+- Broadcast Cards (BroadcastItem):
+  Each broadcast card displays:
+  • Title & Subtitle: Subject line and message preview.
+  • Megaphone Icon: Official announcement badge.
+  • Timestamp: Date created.
+  • Live 3-Color Metric Badges:
+    - 🔵 Blue Badge: Number of parents who Accepted.
+    - 🟠 Orange Badge: Number of parents who Rejected.
+    - 🟡 Yellow/Amber Badge: Number of parents Pending / Not Responded.
+
+- Floating Action Button (+):
+  Visible to staff with broadcast permissions to open the composer.
+
+---
+
+### View 2: Broadcast Composer & Audience Selector (broadcastNurseryPrincipal.dart)
+This is the creation screen where staff drafts and targets the broadcast.
+
+- Role Selector: Choose sending role (Principal, Teacher, or Nurse).
+- Target Audience Hierarchy:
+  • Nursery selection.
+  • Classroom / Section selection (multi-select checkmarks).
+  • Optional: Select individual students within classes.
+- Broadcast Message Type:
+  • General: Standard announcement (read-only notice).
+  • Consent: Requires parents to click Accept or Reject (e.g. field trips).
+  • Mandatory: Requires mandatory acknowledgment before dismissal.
+- Content Fields:
+  • Subject line.
+  • Description / Reason text area.
+- Send Button:
+  Validates fields and calls the API to create the conversation records across all targeted students.
+
+---
+
+### View 3: Live Response & Parent Compliance Tracker (broadcastResponse.dart)
+Tapping any broadcast card opens this screen to see exactly who responded.
+
+- 3 Status Tabs:
+  • Accepted Tab: List of students whose parents clicked Accept.
+  • Rejected Tab: List of students whose parents clicked Reject.
+  • Pending Tab: List of students whose parents have not answered yet.
+- Student Cards:
+  Displays student photo, name, class, and parent contact details for quick follow-up calls or reminders.
+- Class Filter:
+  Allows staff to filter the response list by a single section (e.g. "Show only Class 1 responses").
+
+---
+
+### View 4: Parent Interactive Chat Bubble (broadCastBubble.dart)
+The parent does NOT have a separate broadcast inbox—the broadcast lands inside their child's Logbook chat.
+
+- Highlighted Card:
+  Clearly stands out from normal messages with a colored border and megaphone icon.
+- Content Area:
+  Displays the sender role, subject line, full announcement, and timestamp.
+- Action Buttons (for Consent / Mandatory messages):
+  • "Accept" button (green/blue styling).
+  • "Reject" button (outline/red styling).
+- Dynamic Status Change:
+  Once the parent taps Accept or Reject, the buttons vanish and are replaced by a permanent badge ("Accepted on [Date/Time]" or "Rejected on [Date/Time]").
+
+---
+
+## 4. KEY HIGHLIGHTS TO SAY IN YOUR KT (CHEAT SHEET)
+
+1. Seamless Integration with Logbook:
+   "Parents don't need a separate broadcast screen. Announcements appear directly in their child's chat timeline as distinct, actionable cards."
+
+2. Auditable Two-Way Compliance:
+   "Unlike WhatsApp or email where staff have no idea if parents read a circular, Broadcast has built-in audit metrics: staff can see exact counts for Accepted, Rejected, and Pending in real-time."
+
+3. Granular Targeting:
+   "Staff can broadcast at multiple levels: nursery-wide, to a specific grade, to a specific section, or to a custom set of individual students."
+
+4. Unified Data Architecture:
+   "Under the hood, Broadcasts are special conversation records with isConsent: true and messageType flags. When a parent taps Accept or Reject, it posts a reply that updates the central audit log."
