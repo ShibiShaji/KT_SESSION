@@ -1,0 +1,114 @@
+# LOGBOOK — FEATURE INTRODUCTION & UI WALKTHROUGH
+
+## 1. WHAT IS THE LOGBOOK? (THE CORE PURPOSE IN SIMPLE WORDS)
+
+The Logbook is the official communication & digital diary hub connecting Nursery Staff and Parents for every enrolled child.
+
+Unlike a casual WhatsApp chat, Logbook is built specifically for nursery operations:
+- Every message is tied directly to a specific child (kidInfoId).
+- Messages are segmented by staff roles (Teacher, Nurse, Principal) so medical updates do not get lost in daily activity chats.
+- It supports both 1-on-1 private messaging and school-wide Broadcasts with Parent Consent/Acknowledgment (Accept / Reject).
+
+---
+
+## 2. WHO USES IT? (USER ROLES & WHAT THEY DO)
+
+### 1. Parent (PMS App User)
+- Views only their own enrolled children.
+- Receives daily updates, activity photos, and health notices per child.
+- Communicates directly with the child's teacher, nurse, or principal.
+- Signs off on official Consents (e.g. field trips, medical permissions) by tapping Accept or Reject.
+
+### 2. Teacher (NMS Staff App User)
+- Interacts with students in their assigned classroom/section.
+- Sends daily learning notes, behavioral updates, and activity photos under the Teacher tab.
+- Answers parent queries regarding daily classroom progress.
+
+### 3. Nurse (NMS Staff App User)
+- Sends medical notices (temperature logs, medication doses, incident reports) under the Nurse tab.
+- Requests parent medical acknowledgments and emergency sign-offs.
+
+### 4. Principal / Admin (NMS Staff App User)
+- Has full nursery oversight.
+- Composes and sends Broadcast Announcements to an entire class or nursery.
+- Monitors parent response rates in real-time (Accepted / Rejected / Pending).
+
+---
+
+## 3. WHAT ARE THE MAIN VIEWS? (UI EXPLAINED IN SIMPLE WORDS)
+
+### View 1: Logbook Main List Screen (logBook.dart)
+This is the inbox screen that the user sees upon tapping Logbook from the dashboard.
+
+- Top Search Bar:
+  Search by child's name in English or Arabic.
+
+- Filter Icon (Staff only):
+  Opens a bottom sheet to filter the student list by nursery, classroom, role tag, and date range.
+
+- Child List Cards (LogCard):
+  Each row represents a child conversation:
+  • Child Avatar: Photo with gender placeholder fallback.
+  • Child Name & Code: Full name and student code.
+  • Subtitle Snippet: Preview of the most recent message ("Noted. I'll monitor her...").
+  • Relative Timestamp: Smart time display ("Now", "04:32 PM", "Yesterday", or "dd/MM/yyyy").
+  • Unread Badge: Green badge showing if there are unread messages.
+
+- Floating Action Button (+):
+  Visible for Principal/Admin staff to initiate a new chat or broadcast by selecting a classroom.
+
+---
+
+### View 2: Chat & Conversation Detail Screen (chatDetailedScreen.dart)
+Tapping any child card opens this screen.
+
+- Header Bar:
+  Shows the child's photo, name, and class, plus a calendar icon for date-filtered message searching.
+
+- Role Tabs Bar (CustomMainTab):
+  • Teacher Tab: Daily lessons, activities, general remarks.
+  • Nurse Tab: Health reports, medication, fever logs.
+  • Principal Tab: School notices, fee reminders, administrative notes.
+  (Switching tabs filters the messages without mixing up medical and academic chats).
+
+- Chat Timeline:
+  • Regular Chat Bubbles: Incoming (staff) and outgoing (parent) text bubbles with timestamps.
+  • Media Attachments: In-chat photo previews, document/PDF links, and audio clips.
+  • Broadcast & Consent Bubbles (broadCastBubble.dart): Specially styled cards for official announcements with actionable buttons:
+    - Accept / Reject buttons for parent consent.
+    - Status badges: Accepted, Rejected, or Pending.
+
+- Composer Bar (Bottom):
+  • Text input field + Emoji picker button.
+  • Paperclip menu: Upload from Camera, Gallery, or Document Picker.
+  • Send button: Triggers API to post message and optimistic UI update.
+
+---
+
+### View 3: Filter Bottom Sheet (logbookFilterBotomsheet.dart)
+Used by nursery staff to quickly filter their high-volume inbox:
+- Select Classroom / Section.
+- Select Tag Type (Teacher, Nurse, Principal).
+- Select Date Range (Today, this week, custom date).
+
+---
+
+### View 4: Broadcast Creation & Response View (Staff Side)
+- Composer (broadcastNurseryPrincipal.dart):
+  Staff selects one or multiple classrooms, types the announcement subject and body, and toggles "Requires Consent / Acknowledgment".
+
+- Response Tracker (broadcastResponse.dart):
+  Shows a live breakdown of which parents Accepted, Rejected, or haven't responded yet.
+
+---
+
+## 4. KEY HIGHLIGHTS TO SAY IN YOUR KT (CHEAT SHEET)
+
+1. Role-Driven Segregation:
+   "Logbook is not a single giant chat. It is segregated by staff role (Teacher, Nurse, Principal) so parents always know whether a message is academic or medical."
+
+2. Built-in Compliance & Consent:
+   "Broadcast messages can mandate consent. Parents don't just type 'OK'; they tap formal Accept/Reject buttons which log official audit timestamps."
+
+3. Smart Unified Data Layer:
+   "Both parents and staff use the exact same underlying chat UI (ChatDetailScreen), but the app dynamically switches API endpoints and permissions based on isNurseryUser."
