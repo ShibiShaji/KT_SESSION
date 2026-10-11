@@ -1,0 +1,148 @@
+# IN APP NOTIFICATIONS
+
+## KT SESSION INTRO (WHAT TO SAY)
+
+"Hi everyone, thanks for joining. Today I'll be walking you through the backend implementation of our **In-App Notifications** feature in our NestJS architecture.
+
+Before we dive into the code, here is a quick high-level overview of how it works:
+- Unlike push notifications (which wake up the mobile app via Firebase FCM), **In-App Notifications** are the notifications users view directly inside the app notification center/bell icon.
+- Our backend serves as a unified aggregation layer: it fetches notifications from two places — external institutional PMS announcements via HTTP, and local event lifecycle notifications (approvals, rejections, published events) from our database tables (`sea_event_notifications`).
+- It normalizes both sources into a consistent model with deep links and sends them to Flutter.
+
+Today, we'll follow the exact request lifecycle from the controller down to the database and back, plus a few key side flows like marking notifications as read and automated triggers. Let's start with our API entry point in VS Code."
+
+---
+
+Flutter / Client Request
+↓
+Controller: parentNursery.controller.ts
+↓
+DTO / Model: notificationSettings.model.ts
+↓
+Service: parentNursery.service.ts
+↓
+Repository / DB / External API: EventNotification Repo & PMS HTTP Client
+↓
+Response: Unified Notification List
+↓
+Flutter / Client
+
+---
+
+## KT EXPLANATION
+
+### 1. parentNursery.controller.ts
+Show: `ParentNurseryController / getParentNotifications()`
+
+Explain:
+- Flutter calls `GET /notification/getParentNotifications/:userId` to fetch in-app notifications for the logged-in user.
+- The controller extracts the authenticated user identity (`PersonId` from user profile and database `dbUserId`) from the JWT request (`RequestWithUser`).
+- It passes both identifiers to the service layer to coordinate fetching local and external notifications.
+
+↓
+
+### 2. notificationSettings.model.ts
+Show: `NotificationSettingsModel`
+
+Explain:
+- Defines the notification data contract expected by the Flutter app (e.g. `id`, `Description`, `systemNotificationDate`, `redirectUrl`, `status`).
+- Acts as the standard transfer model to normalize notifications originating from multiple subsystems.
+- Ensures the service shapes both local database records and external PMS responses into a unified structure before responding.
+
+↓
+
+### 3. parentNursery.service.ts
+Show: `ParentNurseryService / getParentNotifications()`
+
+Explain:
+- Orchestrates multi-source notification retrieval by fetching external PMS notifications and local database notifications.
+- Uses `dbUserId` to query local TypeORM repositories for event alerts (`EventNotification`), rejected/cancelled requests (`EventRequest`), and published events (`Event`).
+- Maps local database records into `NotificationSettingsModel` with deep links (`redirectUrl: /events/:id`), merges them with external notifications, and returns the combined list.
+
+↓
+
+### 4. event_notification.entity.ts & TypeORM Repositories
+Show: `eventNotificationRepo.find()`, `eventRequestRepo.find()`, `eventRepo.find()`
+
+Explain:
+- The service injects TypeORM `Repository<EventNotification>`, `Repository<EventRequest>`, and `Repository<Event>` to query database tables (`sea_event_notifications`, `sea_event_requests`, `sea_events`).
+- It executes parameterized queries filtered by `userId: dbUserId` and ordered descending by date (`createdDate: 'DESC'`).
+- The repositories return raw entity records containing notification titles, messages, event IDs, and timestamps.
+
+↓
+
+### 5. DB / EXTERNAL API
+Show: `sea_event_notifications` Table Query & `http.get('notification/GetParentNotifications/${userId}')`
+
+Explain:
+- Database fetches user-specific in-app notifications from `sea_event_notifications` where `userId = dbUserId`.
+- Concurrently, `HttpService` calls the external PMS HTTP endpoint (`baseURL: NO_PARENT_PMS_API_URL`) to fetch school announcements.
+- Both data sets are returned to the service layer for aggregation and deduplication.
+
+↓
+
+### 6. RESPONSE
+Show: `parentNursery.service.ts` (return statement) & `parentNursery.controller.ts`
+
+Explain:
+- The service combines local mapped notifications and external notifications via `[...localMappedNotifications, ...externalNotifications]`.
+- Every item contains consistent display fields (`Description`, `CreatedDate`) and deep link routing for Flutter (`RedirectUrl`).
+- The controller returns the combined `NotificationSettingsModel[]` array directly to Flutter with HTTP 200 OK.
+
+---
+
+## FILE ORDER TO SHOW
+
+1. `apps/pms-api/src/controllers/parentNursery.controller.ts` — API entry point for Flutter notifications
+2. `apps/nms-api/src/providers/models/notification/notificationSettings.model.ts` — In-app notification response contract
+3. `apps/pms-api/src/providers/services/parentNursery.service.ts` — Business logic aggregating local DB and external notifications
+4. `apps/event-api/src/entities/event_notification.entity.ts` — In-app notification DB entity (`sea_event_notifications`)
+5. `apps/event-api/src/controllers/event_notification.controller.ts` — Manager & role-based in-app notification controller
+6. `apps/event-api/src/services/event_notification.service.ts` — Notification persistence and mark-as-read service
+
+---
+
+## IMPORTANT SIDE FLOWS
+
+### 1. SIDE FLOW — MARK NOTIFICATIONS AS READ (PARENT)
+Trigger → Flutter user opens notifications bell
+→ `apps/pms-api/src/controllers/parentNursery.controller.ts`
+→ `setParentNotificationsViewStatus()`
+→ `apps/pms-api/src/providers/services/parentNursery.service.ts`
+→ Calls external PMS endpoint `notification/SetParentNotificationsViewStatus`
+→ Updates read/view status
+→ Response to Flutter
+
+### 2. SIDE FLOW — MARK ALL AS READ (EVENT MANAGER)
+Trigger → Event manager taps "Mark All as Read"
+→ `apps/event-api/src/controllers/event_notification.controller.ts`
+→ `markAllAsRead()`
+→ `apps/event-api/src/services/event_notification.service.ts`
+→ Updates TypeORM repo: `notificationRepo.update({ assignedManagerId, isRead: false }, { isRead: true })`
+→ DB updates `sea_event_notifications.is_read = 1`
+→ Response to client
+
+### 3. SIDE FLOW — CREATE NOTIFICATION ON EVENT APPROVAL / REJECTION
+Trigger → Event manager approves or rejects an event request
+→ `apps/event-api/src/services/event-request.service.ts`
+→ Calls `eventNotificationService.create({ userId, eventId, title, message, type: NotificationType.REJECTED })`
+→ `apps/event-api/src/services/event_notification.service.ts`
+→ Persists new record to `sea_event_notifications` with `isRead: false`
+→ Next: Notification becomes visible in user's in-app notification feed
+
+### 4. SIDE FLOW — CREATE NOTIFICATION ON EVENT PUBLISH
+Trigger → Admin or manager publishes an event
+→ `apps/event-api/src/services/event.service.ts`
+→ Calls `eventNotificationService.create({ userId: targetUserId, eventId, title: 'Event Published', message, type: NotificationType.APPROVED })`
+→ `apps/event-api/src/services/event_notification.service.ts`
+→ Inserts notification row in `sea_event_notifications`
+→ Next: Event creator receives in-app notification linking to the live event
+
+### 5. SIDE FLOW — ROLE-BASED MANAGER NOTIFICATION FETCH
+Trigger → Facility manager (Role 1) or assigned manager opens event notification panel
+→ `apps/event-api/src/controllers/event_notification.controller.ts`
+→ `getNotificationsWithRole(assignedManagerId, roleId)`
+→ `apps/event-api/src/services/event_notification.service.ts`
+→ Checks `roleId === 1` (Facility Manager fetches all notifications; other roles fetch only assigned notifications)
+→ TypeORM queries `sea_event_notifications` with event relation
+→ Formatted notification list returned to client

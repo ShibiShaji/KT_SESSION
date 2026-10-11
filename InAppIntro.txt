@@ -1,0 +1,132 @@
+# IN APP NOTIFICATION (FLUTTER)
+
+## KT SESSION INTRO (WHAT TO SAY)
+
+"Hi everyone, thanks for joining. Today I'll be walking you through the Flutter frontend implementation of our **In-App Notifications** feature.
+
+Before opening the files in VS Code, here is a quick 30-second context on how it works:
+- While push notifications alert users outside the app via Firebase, **In-App Notifications** represent the dedicated notification center screen where users view all their institutional alerts, event updates, and lifecycle messages.
+- In our Flutter architecture, this screen (`NotificationsScreen`) is driven by Riverpod state management. It automatically resolves the logged-in user profile, fetches unified notifications through our repository layer using Dio, and categorizes them into 'All' and 'Unread' tabs.
+- When users tap an in-app notification, the app marks the notification as read locally and on the server, expands details, and deep-links directly to the relevant screen.
+
+In this walkthrough, we will trace the complete execution path from opening the notification screen to the Riverpod provider, repository, backend API call, and UI rendering, along with key side flows like marking notifications as viewed and deep linking. Let's start with our entry point in VS Code."
+
+---
+
+## OVERALL FLOW
+
+Notification Bell / Route (/notifications)
+↓
+NotificationsScreen (notification.dart)
+↓
+getParentNotificationsProvider (notificationRepositoryProvider.dart)
+↓
+NotificationRepository (notificationRepository.dart)
+↓
+GET /notification/getParentNotifications/:userId
+↓
+List<NotificationParent>
+↓
+Tabs (All / Unread) & Notification Card List UI
+
+---
+
+## KT EXPLANATION
+
+### 1. notification.dart
+**Show:** `NotificationsScreen._loadUserId()` & `build()`
+
+**Explain:**
+- User opens the Notification screen by tapping the bell icon in the app.
+- `_loadUserId()` extracts the logged-in parent's `PersonId` from encrypted SharedPreferences (`USER_PROFILES`).
+- The `build()` method watches `getParentNotificationsProvider(_userId)` to initiate data fetching and renders the notification list.
+
+↓
+
+### 2. notificationRepositoryProvider.dart
+**Show:** `getParentNotificationsProvider`
+
+**Explain:**
+- A Riverpod `FutureProvider.family` keyed by the user ID string.
+- Injects `notificationRepositoryProvider` and triggers `repository.getParentNotifications(userId)`.
+- Emits asynchronous data states (`loading`, `data`, `error`) to the `NotificationsScreen` UI.
+
+↓
+
+### 3. notificationRepository.dart
+**Show:** `NotificationRepository.getParentNotifications()`
+
+**Explain:**
+- The repository responsible for notification network calls via the injected `Dio` client.
+- Sends an HTTP `GET` request to `${baseUrlNMSProvider}/notification/getParentNotifications/$userId`.
+- Deserializes the incoming JSON array into strongly-typed `NotificationParent` model instances.
+
+↓
+
+### 4. API
+**Show:** `GET /notification/getParentNotifications/:userId`
+
+**Explain:**
+- Backend aggregator endpoint that combines external school announcements and local SQL database event updates.
+- Requires the user's `PersonId` as a route parameter and Bearer JWT in the request header.
+- Returns a JSON array containing notification titles, descriptions, creation timestamps, statuses, and redirect URLs.
+
+↓
+
+### 5. notification.dart / Response Handling
+**Show:** `notificationsAsync.when()` & `_buildNotificationTile()`
+
+**Explain:**
+- In `notification.dart` (lines 173–205), `notificationsAsync.when()` handles loading skeletons, error retry, and data display.
+- Separates items into "All" and "Unread" lists based on `notif.isNotified` and local read state.
+- Formats relative timestamps (`now`, `15m`, `2h`, `yesterday`) and renders unread red badge indicators.
+
+---
+
+## FILE ORDER TO SHOW
+
+1. `lib/screens/notification/notification.dart` — Main notifications screen and UI rendering
+2. `lib/screens/nursery/notification/repository/notificationRepositoryProvider.dart` — Riverpod notification providers
+3. `lib/screens/nursery/notification/repository/notificationRepository.dart` — Repository making Dio GET requests
+4. `lib/screens/nursery/notification/models/notificationParentModel.dart` — Notification data model
+5. `lib/screens/notification/notification.dart` — Card tap, deep link navigation, and mark-as-read handling
+
+---
+
+## IMPORTANT SIDE FLOWS
+
+### 1. NOTIFICATION TAP & DEEP LINK ROUTING
+Trigger → User taps a notification card  
+→ `lib/screens/notification/notification.dart`  
+→ `_handleNotificationTap()`  
+→ Marks notification read locally and expands the text  
+→ Parses description content and pushes route (e.g. `/application-screen`, `/my-account`, or `/events/:id`)  
+
+### 2. MARK NOTIFICATION AS VIEWED ON SERVER
+Trigger → Unread notification tapped with a valid `moduleId`  
+→ `lib/screens/notification/notification.dart`  
+→ Calls `setParentNotificationsViewStatusProvider((moduleId: notif.moduleId))`  
+→ `NotificationRepository.setParentNotificationsViewStatus()`  
+→ Sends `GET /notification/setParentNotificationsViewStatus?moduleId=...`  
+→ Refreshes `getParentNotificationsProvider` to persist read status on backend  
+
+### 3. UNREAD VS ALL TAB FILTERING
+Trigger → User toggles the "Unread" tab button  
+→ `lib/screens/notification/notification.dart`  
+→ Sets `isUnreadSelected = true`  
+→ Filters notifications where `isNotified == 0` and key is not in `readNotificationsProvider`  
+→ Displays filtered list or empty "You're all caught up" state  
+
+### 4. PULL TO REFRESH
+Trigger → User pulls down on the notification list  
+→ `lib/screens/notification/notification.dart`  
+→ `RefreshIndicator.onRefresh`  
+→ Executes `ref.refresh(getParentNotificationsProvider(_userId!).future)`  
+→ Re-fetches latest notifications from the server without full screen reload  
+
+### 5. VISITOR ACCESS HANDLING
+Trigger → User logged in as a visitor navigates to notifications  
+→ `lib/screens/notification/notification.dart`  
+→ `_loadUserId()` detects `userType == 'VISITOR'`  
+→ Sets `_isVisitor = true`  
+→ Shows "Notifications are currently unavailable" screen preventing unauthorized API calls  

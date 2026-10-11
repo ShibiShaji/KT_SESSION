@@ -1,0 +1,141 @@
+# PUSH NOTIFICATIONS
+
+## KT SESSION INTRO (WHAT TO SAY)
+
+"Hi everyone, thanks for joining. Today I'll be walking you through the backend implementation of our **Push Notifications** feature in our NestJS architecture.
+
+Before opening the files in VS Code, here is a quick 30-second context on how it works:
+- Unlike in-app notifications which are pulled when a user visits the notification screen, **Push Notifications** are proactively pushed to the user's mobile device via Firebase Cloud Messaging (FCM), even when the app is in the background or killed.
+- The flow connects three critical systems: the Flutter client which registers its device token on login, our NestJS backend which coordinates user lookup and payload creation, and Google's Firebase Admin SDK which multicasts the push alert to APNs (Apple) and FCM (Android).
+- Our backend exposes a standardized `POST /sendNotification` API that accepts targeted notifications, queries active device tokens from our database, prepares platform-specific payloads, and dispatches them via Firebase.
+
+Today, we will trace the exact execution path from the incoming request down to Firebase and back, plus key side flows like device token registration and cleanup. Let's open our first file in VS Code."
+
+---
+
+## OVERALL FLOW
+
+External System / Client Trigger
+↓
+POST /sendNotification
+↓
+Controller: sendNotification.controller.ts
+↓
+DTO / Model: incomingNotification.model.ts
+↓
+Service: notification.service.ts
+↓
+Repository / DB / External API: DeviceTokenService & FirebaseService (Admin SDK)
+↓
+Firebase Cloud Messaging (FCM)
+↓
+Mobile Device (Flutter App)
+
+---
+
+## KT EXPLANATION
+
+### 1. sendNotification.controller.ts
+Show: `SendNotificationController.sendNotification()`
+
+Explain:
+- External systems or client triggers send notification requests to `POST /sendNotification`.
+- The controller receives the push payload adhering to `IncomingNotificationModel`.
+- It acts as the API gateway and immediately delegates payload processing to `NotificationService.sendNotificationFromExternal()`.
+
+↓
+
+### 2. incomingNotification.model.ts
+Show: `IncomingNotificationModel`
+
+Explain:
+- Defines the required payload contract: target recipients (`userId`, `userIds`, or `userType`), notification body (`title`, `message`, localized Arabic text), and metadata (`actionUrl`, `data`).
+- Validates that mandatory notification content is present and recipient targets are properly specified.
+- The typed object passes directly into the service layer for recipient resolution and payload preparation.
+
+↓
+
+### 3. notification.service.ts
+Show: `NotificationService.sendNotificationFromExternal()`
+
+Explain:
+- Contains the core business logic: verifies Firebase initialization and extracts target user IDs.
+- Calls `deviceTokenService.getActiveTokensForUsers()` or `getActiveTokensByUserType()` to resolve device tokens from the database.
+- Builds the platform-specific message (high priority for Android, sound/badge alert for iOS APNs, deep-link data) and passes tokens to `firebaseService.sendToDevices()`.
+
+↓
+
+### 4. firebase.service.ts & device-token.service.ts
+Show: `deviceTokenService.getActiveTokensForUsers()` & `firebaseService.sendToDevices()`
+
+Explain:
+- `deviceTokenService` queries the TypeORM repository to fetch all registered, active FCM tokens matching the user IDs.
+- `firebaseService` constructs an `admin.messaging.MulticastMessage` containing the resolved device tokens and platform configs.
+- It executes Google's Firebase Admin SDK multicast call: `admin.messaging().sendEachForMulticast(payload)`.
+
+↓
+
+### 5. DB / EXTERNAL API
+Show: `DeviceToken` Query & `admin.messaging().sendEachForMulticast()`
+
+Explain:
+- Database executes SQL query on table `sea_device_tokens` (`WHERE user_id IN (...) AND is_active = 1`).
+- Firebase Admin SDK makes an HTTPS call to Google Firebase Cloud Messaging servers with the target device tokens.
+- FCM delivers the push alert to Apple APNs and Android FCM gateways and returns batch delivery counts and token-level responses.
+
+↓
+
+### 6. RESPONSE
+Show: `notification.service.ts` (lines 261–270) & `SendNotificationResponseModel`
+
+Explain:
+- `FirebaseService` returns delivery results (`successCount`, `failureCount`, and failed device tokens).
+- The service maps this into `SendNotificationResponseModel` with a unique `notificationId`, `deliveredTo` count, and any failed user IDs.
+- The controller returns HTTP 200 OK with the delivery status summary back to the caller.
+
+---
+
+## FILE ORDER TO SHOW
+
+1. `apps/nms-api/src/controllers/sendNotification.controller.ts` — API entry point (`POST /sendNotification`)
+2. `apps/nms-api/src/providers/models/notification/incomingNotification.model.ts` — Request and response models
+3. `apps/nms-api/src/providers/services/notification.service.ts` — Business logic, recipient resolution, and payload preparation
+4. `apps/auth-api/src/device-token/device-token.service.ts` — Database token retrieval logic
+5. `apps/nms-api/src/providers/services/firebase.service.ts` — Firebase Admin SDK initialization and multicast dispatch
+6. `apps/auth-api/src/device-token/device-token.controller.ts` — Device token registration API for Flutter
+
+---
+
+## IMPORTANT SIDE FLOWS
+
+### 1. DEVICE TOKEN REGISTRATION (ON USER LOGIN)
+Trigger → Flutter user logs in and obtains FCM token  
+→ `apps/auth-api/src/device-token/device-token.controller.ts`  
+→ `registerToken()` (`POST /device-token/register`)  
+→ `apps/auth-api/src/device-token/device-token.service.ts`  
+→ `registerDeviceToken()` (updates existing or inserts new row in `DeviceToken` table with `isActive = true`)  
+→ Device token saved and ready to receive push notifications  
+
+### 2. DEVICE TOKEN REMOVAL (ON USER LOGOUT)
+Trigger → Flutter user logs out  
+→ `apps/auth-api/src/device-token/device-token.controller.ts`  
+→ `removeToken()` (`DELETE /device-token/remove`)  
+→ `apps/auth-api/src/device-token/device-token.service.ts`  
+→ `removeDeviceToken()` (deletes token record or marks inactive)  
+→ User will no longer receive notifications on that logged-out device  
+
+### 3. BROADCAST PUSH BY USER TYPE (PARENTS / STAFF)
+Trigger → Notification request specifies `userType: 'parent'` without specific user IDs  
+→ `apps/nms-api/src/controllers/sendNotification.controller.ts`  
+→ `sendNotification()`  
+→ `apps/nms-api/src/providers/services/notification.service.ts`  
+→ Calls `deviceTokenService.getActiveTokensByUserType('parent')`  
+→ Fetches all active tokens for that role  
+→ Firebase multicasts push notification to all parent devices  
+
+### 4. ERROR HANDLING & UNINITIALIZED FIREBASE
+Trigger → Firebase credentials missing or Firebase fails to initialize  
+→ `apps/nms-api/src/providers/services/notification.service.ts`  
+→ Checks `firebaseService.isFirebaseInitialized()`  
+→ If false, logs warning and aborts gracefully without crashing  
+→ Returns `{ success: false, message: 'Firebase Cloud Messaging is not configured', deliveredTo: 0 }` to caller  
