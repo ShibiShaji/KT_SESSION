@@ -1,0 +1,81 @@
+--------------------------------------------------------------------------------
+PART 1: IN-APP NOTIFICATIONS (STORED IN DATABASE / VIEWED IN NOTIFICATION CENTER)
+--------------------------------------------------------------------------------
+
+1. NEW EVENT REQUEST CREATED
+   - When Triggered: A user or event requestor submits a new event request form.
+   - Code File: apps/event-api/src/services/event-request.service.ts (line 183)
+   - Receiver: All Facility Managers (roleId = 1)
+   - Notification Type: NotificationType.CREATED
+   - Title: 📋 New Event Request
+   - Message: "{requestorName} requested: '{eventName}'"
+   - Next Action / Deep Link: Opens event request details (/events/:id)
+
+2. EVENT REQUEST APPROVED
+   - When Triggered: A Facility Manager or administrator approves a pending event request.
+   - Code File: apps/event-api/src/services/event-request.service.ts (line 1379)
+   - Receiver: The Event Requestor (requestorId)
+   - Notification Type: NotificationType.APPROVED
+   - Title: Event Approved
+   - Message: "Your event request ‘{eventName}’ has been Approved."
+   - Next Action / Deep Link: Links to /events/:id
+
+3. EVENT ASSIGNED TO MANAGER
+   - When Triggered: An event request is approved and assigned to a manager for setup.
+   - Code File: apps/event-api/src/services/event-request.service.ts (line 1388)
+   - Receiver: The Assigned Event Manager (assignedManagerId)
+   - Notification Type: NotificationType.CREATED
+   - Title: New Event Assigned
+   - Message: "You are assigned to event \"{eventName}\"."
+   - Next Action / Deep Link: Opens manager setup workspace
+
+4. EVENT REQUEST REJECTED
+   - When Triggered: A manager or approver rejects an event request with a reason.
+   - Code File: apps/event-api/src/services/event-request.service.ts (line 1491)
+   - Receiver: The Event Requestor (requestorId)
+   - Notification Type: NotificationType.REJECTED
+   - Title: Event Rejected
+   - Message: "Your event request ‘{eventName}’ has been rejected." (Includes rejection reason)
+   - Next Action / Deep Link: Shows rejection reason in history
+
+5. EVENT PUBLISHED LIVE
+   - When Triggered: The event setup is completed and the event is officially published live.
+   - Code File: apps/event-api/src/services/event.service.ts (line 646)
+   - Receiver: The Event Creator / Requestor (targetUserId)
+   - Notification Type: NotificationType.APPROVED
+   - Title: Event Published
+   - Message: "Event published- Your event ‘{name}’ is now live and available to attendees."
+   - Next Action / Deep Link: Links to /events/:id
+
+6. EVENT CANCELLED
+   - When Triggered: An existing active or published event is cancelled.
+   - Code File: apps/event-api/src/services/event-request.service.ts (line 1966)
+   - Receiver: The Event Requestor / Creator (targetUserId)
+   - Notification Type: NotificationType.UPDATED
+   - Title: Event Canceled
+   - Message: "Your event request '{name}' has been canceled."
+   - Next Action / Deep Link: Status update in event history
+
+7. CHILD ADMISSION APPLICATION SUBMITTED
+   - When Triggered: Parent submits an admission application in PMS system.
+   - Code File: apps/pms-api/src/providers/services/parentNursery.service.ts (line 85)
+   - Receiver: Parent user
+   - Title: Application Update
+   - Message: "Application submitted successfully"
+   - Next Action / Deep Link: Navigates to /application-screen
+
+8. PARENT PROFILE ACTION REQUIRED
+   - When Triggered: Documentation or profile details need completion/KYC.
+   - Code File: apps/pms-api/src/providers/services/parentNursery.service.ts (line 85)
+   - Receiver: Parent user
+   - Title: Profile Update
+   - Message: "Profile details action required"
+   - Next Action / Deep Link: Navigates to /my-account
+
+9. FEE PAYMENTS & RE-ENROLLMENT REMINDERS
+   - When Triggered: Tuition fees are due or re-enrollment window opens.
+   - Code File: apps/pms-api/src/providers/services/parentNursery.service.ts (line 85)
+   - Receiver: Parent user
+   - Title: Fee & Enrollment Reminder
+   - Message: Outstanding balance and re-enrollment status updates
+   - Next Action / Deep Link: Opens payment screen
