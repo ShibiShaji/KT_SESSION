@@ -1,0 +1,146 @@
+# PUSH NOTIFICATION (FLUTTER)
+
+## KT SESSION INTRO (WHAT TO SAY)
+
+"Hi everyone, thanks for joining. Today I'll be walking you through the Flutter frontend implementation of our **Push Notifications** feature.
+
+Before we open the files in VS Code, here is a quick 30-second context on how it works:
+- Push notifications in our Flutter app operate in two complementary directions:
+  1. **Token Registration:** When a user logs in and arrives at the dashboard, we obtain their unique FCM device token and register it with our NestJS backend so the server knows where to deliver notifications.
+  2. **Message Handling & Deep Linking:** When notifications arrive—whether in the foreground, background, or when the app is terminated—we display the alert (using local notifications if foreground) and parse deep links (`actionUrl`) to route the user directly to the relevant screen when tapped.
+- The core services driving this feature are `FirebaseMessagingService` (which encapsulates FCM and local notification plugins) and `NotificationApiService` (which talks to our backend device token endpoints via Dio).
+
+In this session, we will trace the registration flow from the dashboard screen down to the API, and then walk through the notification receiving and tap navigation lifecycle. Let's start with our entry point in VS Code."
+
+---
+
+## OVERALL FLOW
+
+MainDashboard Screen
+↓
+mainDashboard.dart (_registerDeviceToken)
+↓
+firebaseMessagingService.dart (getToken)
+↓
+networkModule.dart (notificationApiProvider)
+↓
+notificationApiService.dart (registerDeviceToken)
+↓
+POST /device-token/register
+↓
+Response (success: true)
+↓
+SharedPreferences & Topic Subscription UI
+
+---
+
+## KT EXPLANATION
+
+### 1. mainDashboard.dart
+**Show:** `MainDashboardState._registerDeviceToken()`
+
+**Explain:**
+- When the user reaches the dashboard after login, this function coordinates FCM token registration with the backend.
+- It checks if registration is already in progress, extracts user profile information (`userId` and environment service URL), and calls `FirebaseMessagingService` for the device token.
+- Once the token and device metadata are assembled into `DeviceTokenModel`, it passes them to the Riverpod API provider.
+
+↓
+
+### 2. firebaseMessagingService.dart
+**Show:** `FirebaseMessagingService.getToken()` & `getDeviceInfo()`
+
+**Explain:**
+- `getToken()` retrieves the device's unique FCM token from Firebase Messaging, retrying if necessary (including APNs token verification on iOS).
+- `getDeviceInfo()` detects the platform type (`android`, `ios`, or `web`) and device identifier needed by the backend.
+- Returns the active token and device details back to `mainDashboard.dart` to construct the registration payload.
+
+↓
+
+### 3. networkModule.dart
+**Show:** `notificationApiProvider`
+
+**Explain:**
+- Defines the Riverpod provider that injects the configured `Dio` client into `NotificationApiService`.
+- Ensures consistent base URLs, interceptors, headers, and authentication tokens are attached to notification requests.
+- Returns the initialized `NotificationApiService` instance when read by the dashboard.
+
+↓
+
+### 4. notificationApiService.dart
+**Show:** `NotificationApiService.registerDeviceToken()`
+
+**Explain:**
+- The repository-level API service responsible for all device token network calls via Dio.
+- Converts `DeviceTokenModel` to JSON and sends a `POST` request to `$baseUrl/device-token/register`.
+- Returns a boolean indicating whether the server successfully saved and activated the device token.
+
+↓
+
+### 5. API
+**Show:** `POST /device-token/register`
+
+**Explain:**
+- Registers the mobile device with the backend for targeted push delivery.
+- Sends `userId`, `deviceToken`, `deviceType`, `deviceId`, and `isActive: true`.
+- Backend responds with `{ success: true, message: 'Device token registered successfully' }`.
+
+↓
+
+### 6. mainDashboard.dart / State & UI
+**Show:** `mainDashboard.dart` (lines 211–220)
+
+**Explain:**
+- If the API returns success, the app stores `device_token_registered = true` in SharedPreferences.
+- It automatically subscribes the device to role-based FCM topics via `_subscribeToTopicsBasedOnRole()`.
+- Shows a localized success toast confirming that notifications are enabled.
+
+---
+
+## FILE ORDER TO SHOW
+
+1. `lib/screens/dashboard/mainDashboard/mainDashboard.dart` — Trigger and device token registration logic
+2. `lib/screens/notification/firebaseMessagingService.dart` — FCM token retrieval, message listeners, and notification display
+3. `lib/data/module/networkModule.dart` — Riverpod provider dependency injection (`notificationApiProvider`)
+4. `lib/screens/notification/notificationApiService.dart` — Dio HTTP network service calling backend endpoints
+5. `lib/models/notificationModel.dart` — Data models (`DeviceTokenModel`, `NotificationModel`)
+6. `lib/main.dart` — Top-level Firebase and FCM non-blocking startup initialization
+
+---
+
+## IMPORTANT SIDE FLOWS
+
+### 1. FOREGROUND PUSH NOTIFICATION RECEIVE & DISPLAY
+Trigger → Push notification arrives while user is actively using the app  
+→ `lib/screens/notification/firebaseMessagingService.dart`  
+→ `_handleForegroundMessage()`  
+→ Resolves localized title/body (Arabic/English) and calls `_showLocalNotification()`  
+→ `FlutterLocalNotificationsPlugin` displays heads-up banner on screen  
+
+### 2. NOTIFICATION TAP & DEEP LINK NAVIGATION
+Trigger → User taps on a received push notification  
+→ `lib/screens/notification/firebaseMessagingService.dart`  
+→ `_handleNotificationTap()`  
+→ Emits event to `_notificationStreamController` and calls `_handleDeepLink(data['actionUrl'])`  
+→ App routes user directly to target screen (e.g. `/events/:id`)  
+
+### 3. TOKEN DEREGISTRATION ON LOGOUT
+Trigger → User taps logout  
+→ `lib/components/widget/customNotificationSettingsCard.dart` / logout service  
+→ `_unregisterDeviceToken()`  
+→ `NotificationApiService.removeDeviceToken()`  
+→ Sends `DELETE /device-token/remove` with `userId` and `deviceToken`  
+→ Backend deactivates token; device stops receiving push alerts  
+
+### 4. NOTIFICATION PERMISSION PROMPT
+Trigger → Dashboard loads and notifications have not yet been granted  
+→ `lib/screens/dashboard/mainDashboard/mainDashboard.dart`  
+→ `_showNotificationPermissionDialog()`  
+→ Opens `NotificationPermissionDialog`  
+→ On "Enable", triggers `_registerDeviceToken()` and requests OS permissions  
+
+### 5. APP STARTUP NON-BLOCKING INITIALIZATION
+Trigger → Flutter application launches  
+→ `lib/main.dart`  
+→ Calls `_initializeFCMAsync()`  
+→ Runs `FirebaseMessagingService.initialize()` with 10-second timeout  
+→ If Firebase fails or times out, app continues booting smoothly without crashing  
