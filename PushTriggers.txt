@@ -1,0 +1,48 @@
+--------------------------------------------------------------------------------
+PART 2: PUSH NOTIFICATIONS (DELIVERED VIA FIREBASE FCM TO MOBILE DEVICES)
+--------------------------------------------------------------------------------
+
+1. NEW CAMPUS VISIT REQUEST CREATED (HOST ALERT)
+   - When Triggered: A visitor registers or submits a campus visit request.
+   - Code File: apps/event-api/src/services/visit-request.service.ts (line 61)
+                -> apps/event-api/src/services/visit-request-notification.service.ts (line 24)
+   - Receiver: The designated Host User (hostId)
+   - Title: New Visit Request
+   - Body: "You have received a new visit request from {visitorName}. Tap to review and approve."
+   - Target / Delivery: High-priority heads-up push alert with default sound.
+
+2. TARGETED INDIVIDUAL USER PUSH ALERT
+   - When Triggered: External API or system calls POST /sendNotification with specific userId.
+   - Code File: apps/nms-api/src/controllers/sendNotification.controller.ts (line 20)
+                -> apps/nms-api/src/providers/services/notification.service.ts (line 164)
+   - Receiver: Single target user (active device tokens fetched from sea_device_tokens)
+   - Examples:
+     * "Payment Received: Your payment of AED 500 has been received successfully."
+     * "Attendance Alert: Your child has arrived at the nursery."
+   - Target / Delivery: Delivered to Android/iOS with actionUrl deep linking.
+
+3. MULTI-USER BATCH PUSH ALERT
+   - When Triggered: External API calls POST /sendNotification with an array of userIds: [...].
+   - Code File: apps/nms-api/src/providers/services/notification.service.ts (line 193)
+   - Receiver: Multiple specific users simultaneously
+   - Examples:
+     * Class-specific announcements, bus route delay alerts, exam schedules.
+     * Dual language support with titleArabic and messageArabic.
+   - Target / Delivery: Firebase Multicast to all active device tokens.
+
+4. ROLE-BASED BROADCAST PUSH (PARENTS / STAFF)
+   - When Triggered: External API calls POST /sendNotification with userType: 'parent' or 'staff'.
+   - Code File: apps/nms-api/src/providers/services/notification.service.ts (line 311)
+   - Receiver: All active devices registered under the specified role
+   - Examples:
+     * "Important Announcement: Nursery will be closed tomorrow due to weather conditions."
+     * "New Event Published: Check out the upcoming sports day details."
+   - Target / Delivery: Broadcast to all parents or staff registered tokens.
+
+5. TOPIC-BASED BROADCAST PUSH (FCM TOPICS)
+   - When Triggered: Notification sent to a Firebase topic (e.g. parents_topic, staff_topic).
+   - Code File: Subscribed on login in SEA_APP: lib/screens/dashboard/mainDashboard/mainDashboard.dart (line 215)
+   - Receiver: All client devices subscribed to that topic
+   - Examples:
+     * Institutional bulletins and seasonal announcements.
+   - Target / Delivery: FCM Topic multicast without querying individual database tokens.
