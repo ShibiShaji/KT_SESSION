@@ -1,0 +1,155 @@
+# CREATE EVENT: SPEAKERS & ATTENDEES MODULE (ADD & EDIT)
+
+## OVERALL FLOW
+
+Client Request (Create Event / Edit Modal)
+↓
+SpeakerController (POST/PUT /speakers)  OR  EventPublishedUtilitiesController (POST/PUT /attendees)
+↓
+SpeakerModel / AttendeeModel (Validation & isedit / isEditMode flags)
+↓
+SpeakerService / AttendeeService (Conflict checks & time overlap validation)
+↓
+TypeORM Repositories (tempRepository vs speakerRepository / attendeeRepository)
+↓
+Database: sea_speaker_attendee_tem (Draft) OR sea_speakers & sea_attendees (Live)
+↓
+Post-save: Upsert SeaUser & AzureMailService notification
+↓
+ResponseModel
+↓
+Client UI Confirmation
+
+---
+
+## KT EXPLANATION
+
+### 1. speaker.controller.ts / event-published-utilities.controller.ts
+Show: `SpeakerController / createSpeaker()` & `updateSpeaker()` (and `EventPublishedUtilitiesController / createAttendee()` & `updateAttendee()`)
+
+Explain:
+- Client sends speaker requests to `POST /speakers` (or `PUT /speakers/:id`) and attendee requests to `POST /attendees` (or `PUT /attendees/:id`).
+- Controllers authenticate the request via `JwtAuthGuard` and `RolesGuard`, bind path parameters (`id`), and receive the request body.
+- They immediately forward the payload to `SpeakerService.createOrUpdateSpeaker()` or `AttendeeService.createOrUpdateAttendee()`.
+
+↓
+
+### 2. speaker.model.ts / attendee.model.ts
+Show: `SpeakerModel` (focus on `isedit`, `eventId`, `sessionId`) and `AttendeeModel` (focus on `isEditMode`, `eventId`, `sessionId`)
+
+Explain:
+- `SpeakerModel` and `AttendeeModel` hold person details: `name`/`fullName`, `email`, `phone`, `designation`, and `organization`.
+- The `isedit` (in Speaker) and `isEditMode` (in Attendee) flags control table routing: `false` routes to the draft table during event creation, while `true` writes directly to live event tables.
+- The validated DTO moves into the service layer where business rules and scheduling constraints are enforced.
+
+↓
+
+### 3. speaker.service.ts / attendee.service.ts
+Show: `SpeakerService / createOrUpdateSpeaker()` and `AttendeeService / createOrUpdateAttendee()`
+
+Explain:
+- Services run phone normalization (`normalizePhone()`) and prefix formatting (`normalizeName()`).
+- They execute cross-checks: duplicate contact verification, session time-conflict validation (`checkTimeOverlapConflict()`), and cross-role validation ensuring a person cannot be both a speaker and an attendee in the same session.
+- Based on the edit flag, the service targets either the temporary repository (`SeaSpeakerAttendeeTem`) or the permanent repository (`Speaker`/`Attendee`).
+
+↓
+
+### 4. speaker_Attendee_temp.enity.ts / speaker.entity.ts / attendee.entity.ts
+Show: `this.tempRepository.save()` vs `this.speakerRepository.save()` / `this.repository.save()`
+
+Explain:
+- In draft mode (event creation), the service saves into `Repository<SeaSpeakerAttendeeTem>` with `entityType: 'speaker'` or `'attendee'`.
+- In live edit mode, the service saves directly into `Repository<Speaker>` or `Repository<Attendee>`.
+- The repository executes the SQL `INSERT` or `UPDATE` statement against the database.
+
+↓
+
+### 5. DB (SQL Server: sea_speaker_attendee_tem vs sea_speakers / sea_attendees)
+Show: Target database tables
+
+Explain:
+- `sea_speaker_attendee_tem`: Staging table holding unapproved/unpublished event speakers and attendees during event drafting.
+- `sea_speakers` & `sea_attendees`: Permanent tables holding live participants linked to published events and sessions.
+- In live mode, saving also creates/updates a record in `sea_users` so the participant can log in to the SEA mobile app via OTP.
+
+↓
+
+### 6. RESPONSE
+Show: `ResponseModel` and `azureMailService.sendEmail()`
+
+Explain:
+- On live creation/update, `AzureMailService` sends an automated registration confirmation email with app download links.
+- The service wraps the saved entity in `new ResponseModel(savedEntity, 'Speaker/Attendee created successfully')`.
+- The controller returns HTTP 200/201 with the standardized response back to the client modal.
+
+---
+
+## FILE ORDER TO SHOW
+
+1. `apps/event-api/src/controllers/speaker.controller.ts` — Speaker endpoints (`createSpeaker`, `updateSpeaker`)
+2. `apps/event-api/src/controllers/event-published-utilities.controller.ts` — Attendee endpoints (`createAttendee`, `updateAttendee`)
+3. `apps/event-api/src/models/speaker.model.ts` & `attendee.model.ts` — DTOs & `isedit` / `isEditMode` flags
+4. `apps/event-api/src/services/speaker.service.ts` — Conflict checks & table routing (`createOrUpdateSpeaker`)
+5. `apps/event-api/src/services/attendee.service.ts` — Scheduling conflicts & user provisioning (`createOrUpdateAttendee`)
+6. `apps/event-api/src/entities/speaker_Attendee_temp.enity.ts` — Draft staging table (`sea_speaker_attendee_tem`)
+7. `apps/event-api/src/entities/speaker.entity.ts` & `attendee.entity.ts` — Live tables (`sea_speakers`, `sea_attendees`)
+
+---
+
+## IMPORTANT SIDE FLOWS
+
+### Side Flow 1 — Add Speaker in Draft Mode (Create Event)
+Trigger: Organizer adds a speaker during Create Event wizard (`isedit = false`)
+→ File: `speaker.controller.ts`
+→ Function: `createSpeaker(@Body() body: SpeakerModel)`
+→ What happens: `SpeakerService.createOrUpdateSpeaker()` validates contact duplicates and inserts into staging table `sea_speaker_attendee_tem` with `entityType: 'speaker'`.
+→ Next: Returns `{ message: 'Speaker created successfully (pending approval)' }`.
+
+### Side Flow 2 — Add / Edit Speaker in Live Mode (`isedit = true`)
+Trigger: Manager adds or edits a speaker on a published event
+→ File: `speaker.controller.ts`
+→ Function: `createSpeaker()` / `updateSpeaker(@Param('id') id)`
+→ What happens: Saves directly to `sea_speakers`, provisions/updates login account in `sea_users`, and triggers `AzureMailService` speaker invitation email.
+→ Next: Returns updated speaker entity to client.
+
+### Side Flow 3 — Add Attendee in Draft Mode (Create Event)
+Trigger: Organizer adds attendee during event creation (`isEditMode = false`)
+→ File: `event-published-utilities.controller.ts`
+→ Function: `createAttendee(@Body() body: AttendeeModel)`
+→ What happens: `AttendeeService.createOrUpdateAttendee()` saves to staging table `sea_speaker_attendee_tem` with `entityType: 'attendee'`.
+→ Next: Returns draft confirmation without sending external emails yet.
+
+### Side Flow 4 — Add / Edit Attendee in Live Mode (`isEditMode = true`)
+Trigger: Manager registers or edits attendee on active event
+→ File: `event-published-utilities.controller.ts`
+→ Function: `createAttendee()` / `updateAttendee(@Param('id') id)`
+→ What happens: Saves to `sea_attendees`, upserts mobile user in `sea_users`, and dispatches registration confirmation email.
+→ Next: Attendee receives email with app links and login credentials.
+
+### Side Flow 5 — Conflict Check (Speaker vs Attendee in Same Session)
+Trigger: Same email/phone registered as both speaker and attendee in a session
+→ File: `speaker.service.ts` / `attendee.service.ts`
+→ Function: `checkTimeOverlapConflict()` & cross-table queries
+→ What happens: Service queries both `tempRepository` and permanent repository; if matching contact exists in the other role, throws `BadRequestException`.
+→ Next: Client displays toast error preventing duplicate booking.
+
+### Side Flow 6 — Delete Speaker (Soft Delete)
+Trigger: Manager removes speaker
+→ File: `speaker.controller.ts`
+→ Function: `deleteSpeaker(@Param('id') id, @Query('isedit') isedit)`
+→ What happens: Calls `SpeakerService.deleteSpeaker()`, sets `isDelete = true` on `sea_speakers` or `sea_speaker_attendee_tem`, and sends cancellation email if previously published.
+→ Next: Speaker is excluded from event session queries.
+
+### Side Flow 7 — Delete Attendee (Soft Delete)
+Trigger: Manager removes attendee
+→ File: `event-published-utilities.controller.ts`
+→ Function: `deleteAttendee(@Param('id') id)`
+→ What happens: Calls `AttendeeService.deleteAttendee()`, soft-deletes record (`isDelete = true`), and sends removal email via `createAttendeeRemovedEmail()`.
+→ Next: Attendee is removed and session headcount is released.
+
+### Side Flow 8 — Authentication & Authorization
+Trigger: API call without role permissions
+→ File: `speaker.controller.ts` & `roles.guard.ts`
+→ Function: `@Roles('EVENT_ADMIN', 'FACILITY_MANAGER', 'EVENT_MANAGER')`
+→ What happens: `RolesGuard` compares token role with authorized roles.
+→ Next: Unauthenticated or non-manager users receive `403 Forbidden`.
