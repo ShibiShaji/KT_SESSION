@@ -1,0 +1,97 @@
+================================================================================
+FIREBASE CONSOLE STEP-BY-STEP WALKTHROUGH FOR KT SESSION
+Project Name: sea-app-f0182
+Sender ID: 44438566765
+================================================================================
+
+WHEN YOU SHARE YOUR SCREEN (FIREBASE CONSOLE):
+Follow these 5 clear steps. Show each screen and explain what it does in 1-2 sentences.
+
+--------------------------------------------------------------------------------
+STEP 1: PROJECT OVERVIEW (LANDING SCREEN)
+--------------------------------------------------------------------------------
+Where to Click:
+- Open: https://console.firebase.google.com/
+- Select Project: "sea-app-f0182"
+
+What to Show on Screen:
+- The Project Dashboard showing the registered apps:
+  * Android app
+  * iOS app
+  * Web app
+
+What to Say:
+"This is our Firebase Console project 'sea-app-f0182'. We have all 3 platforms registered here (Android, iOS, and Web). Firebase acts as our central Cloud Messaging broker between our NestJS backend and our Flutter mobile apps."
+
+
+--------------------------------------------------------------------------------
+STEP 2: PROJECT SETTINGS -> GENERAL TAB (APP CONFIGURATIONS)
+--------------------------------------------------------------------------------
+Where to Click:
+- Click the Gear Icon ⚙️ (top-left near Project Overview) -> Select "Project settings"
+- Stay on the "General" tab
+
+What to Show on Screen:
+- Scroll down to "Your apps" section:
+  * Android App: Show Package name (e.g., com.sharjah.seawork) and the "google-services.json" download button.
+  * iOS App: Show Bundle ID and "GoogleService-Info.plist" download button.
+
+What to Say:
+"Under Project Settings -> General, you can see our registered client apps. This is where we download 'google-services.json' for Android (placed in android/app) and 'GoogleService-Info.plist' for iOS (placed in ios/Runner). These config files link our Flutter app to this specific Firebase project."
+
+
+--------------------------------------------------------------------------------
+STEP 3: CLOUD MESSAGING TAB (APNs & CREDENTIALS)
+--------------------------------------------------------------------------------
+Where to Click:
+- In Project settings, click the "Cloud Messaging" tab (3rd tab from left).
+
+What to Show on Screen:
+1. "Firebase Cloud Messaging API (V1)" -> Show that it is ENABLED.
+2. "Sender ID" -> Show `44438566765`.
+3. Scroll to "Apple app configuration":
+   - Show APNs Authentication Key (.p8 file) or APNs Certificates.
+   - Show Key ID and Team ID.
+4. Scroll to "Web configuration":
+   - Show "Web Push certificates" (VAPID key matching our Flutter code).
+
+What to Say:
+"In the Cloud Messaging tab, we have our FCM API v1 enabled with Sender ID 44438566765. For iOS push notifications to work, Apple requires an APNs Authentication Key (.p8) uploaded here, linked to our Apple Developer Team ID. For Web, our VAPID key is configured here."
+
+
+--------------------------------------------------------------------------------
+STEP 4: SERVICE ACCOUNTS TAB (BACKEND NESTJS INTEGRATION)
+--------------------------------------------------------------------------------
+Where to Click:
+- In Project settings, click the "Service accounts" tab (4th tab).
+
+What to Show on Screen:
+- Node.js SDK snippet (`admin.initializeApp(...)`).
+- Show the button "Generate new private key".
+- Show the Service Account Email: `firebase-adminsdk-...@sea-app-f0182.iam.gserviceaccount.com`.
+
+What to Say:
+"This is the most critical tab for our NestJS backend. Under 'Service accounts', clicking 'Generate new private key' downloads a service account JSON file. In our NestJS backend, we store this entire JSON as the `FIREBASE_SERVICE_ACCOUNT` environment variable in `.env.development` and `.env.main`. This gives our backend permission to send push notifications via Firebase Admin SDK without requiring any user passwords."
+
+
+--------------------------------------------------------------------------------
+STEP 5: ENGAGE -> MESSAGING (SENDING A TEST PUSH NOTIFICATION)
+--------------------------------------------------------------------------------
+Where to Click:
+- On the left sidebar, scroll down to "Run" / "Engage" -> Click "Messaging" (or "Cloud Messaging").
+- Click "Create your first campaign" or "New campaign" -> Select "Firebase Notification messages".
+
+What to Show on Screen:
+1. Step 1 (Notification):
+   - Enter Notification Title: "Test KT Push Notification"
+   - Enter Notification Text: "Testing push notification delivery from Firebase Console"
+2. Click the "Send test message" button on the right:
+   - Paste a real FCM device token (from Flutter logs or sea_device_tokens DB table).
+   - Click "+" -> Click "Test".
+
+What to Say:
+"If we ever need to test notification delivery independently of the backend API, we use the Messaging console here. We enter a title, message, and paste a device token from a running Flutter device. When we click 'Test', Firebase immediately routes the push notification to the phone, verifying that the device token and platform certificates are working 100% end-to-end."
+
+================================================================================
+END OF FIREBASE CONSOLE WALKTHROUGH
+================================================================================
