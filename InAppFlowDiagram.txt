@@ -1,0 +1,7 @@
+## Introduction – In-App Notifications Flow
+
+The In-App Notification System keeps users informed about important events and activities within the application. Notifications are stored in the database and displayed in the application's Notification Center, allowing users to view updates and navigate directly to the relevant screens.
+
+The system covers **nine key notification scenarios** across two modules: the Event Management System (Event API) and the Parent Management System (PMS API). These include event request creation, approval, assignment, rejection, publication, cancellation, admission application updates, profile completion reminders, and fee payment or re-enrollment reminders.
+
+This notification flow improves communication between users, facility managers, event managers, and parents by providing timely updates and clear next actions. The following diagram illustrates the notification triggers, recipients, sample notifications, and destination screens.
