@@ -1,0 +1,144 @@
+# CALENDAR OF SEA_EVENTS (REACT)
+
+## OVERALL FLOW
+
+User navigates to /calendar
+↓
+App.js (Route: /calendar)
+↓
+CalendarPage.jsx (fetchCalendarEvents)
+↓
+DateRangePicker.jsx (Filter selection)
+↓
+httpService.js (Axios HTTP client)
+↓
+GET /events?page=1&limit=100&filterstartDate=...&filterendDate=...
+↓
+Response (apiEvents)
+↓
+State Mapping & FullCalendar Render (events state)
+
+---
+
+## KT EXPLANATION
+
+### 1. src/App.js
+Show: Route definition for `/calendar`
+
+Explain:
+- This is the main application routing table wrapping pages in `ProtectedRoute`.
+- Navigating to `/calendar` verifies authentication and mounts `CalendarPage`.
+- This kicks off the component lifecycle and triggers the calendar data flow.
+
+↓
+
+### 2. src/pages/CalendarPage.jsx
+Show: `useEffect()` and `fetchCalendarEvents()`
+
+Explain:
+- `CalendarPage` is the main screen containing the calendar toolbar, filters, and FullCalendar instance.
+- On mount, `useEffect` calls `fetchCalendarEvents()` with empty or default date range.
+- It sets `loading = true`, prepares the URL `/events?page=1&limit=100`, and invokes the HTTP service.
+
+↓
+
+### 3. src/services/httpService.js
+Show: `httpService.get()` and `axiosInstance` interceptors
+
+Explain:
+- `httpService` is the centralized networking layer built on Axios with `API_BASE_URL`.
+- The request interceptor injects the stored JWT `Bearer ${accessToken}` from `localStorage.getItem("userData")`.
+- It executes the HTTP GET request and returns backend payload directly through response interceptor.
+
+↓
+
+### 4. API (Backend Endpoint)
+Show: `GET /events?page=1&limit=100&filterstartDate=...&filterendDate=...`
+
+Explain:
+- Requests published events falling within the selected time window.
+- Returns `{ success: true, data: { data: [...], total, page, limit } }`.
+- Each event includes id, name, startTime, endTime, eventModeId, and location.
+
+↓
+
+### 5. src/pages/CalendarPage.jsx
+Show: Data transformation in `fetchCalendarEvents()` and `setEvents()`
+
+Explain:
+- Maps each backend event into FullCalendar's required schema (`id`, `title`, `start`, `end`, `allDay`, `extendedProps`).
+- Computes `durationHours >= 20` to mark full-day events automatically.
+- Stores transformed array in `setEvents(calendarEvents)` and resets `loading = false`.
+
+↓
+
+### 6. src/pages/CalendarPage.jsx & FullCalendar
+Show: `<FullCalendar>` component and `eventContent` prop
+
+Explain:
+- Renders the interactive grid supporting `timeGridDay`, `timeGridWeek`, and `dayGridMonth` views.
+- `eventContent` renders custom event cards displaying event title, start/end time, and mode icon (physical/virtual).
+- Clicking an event triggers `eventClick` to open `EventDetailsModal`.
+
+---
+
+## FILE ORDER TO SHOW
+
+1. `src/App.js` — Route definition (`/calendar`)
+2. `src/pages/CalendarPage.jsx` — Entry component & `fetchCalendarEvents()`
+3. `src/services/httpService.js` — Axios client with JWT interceptor
+4. `src/pages/CalendarPage.jsx` — Event mapping & `<FullCalendar>` rendering
+5. `src/components/common/calendarEventModal.jsx` — Event click details modal
+
+---
+
+## IMPORTANT SIDE FLOWS
+
+### Side Flow 1 — Date Range Filter
+Trigger: User clicks calendar filter icon and selects start/end dates
+→ File: `src/components/ui/DateRangePicker.jsx` & `src/pages/CalendarPage.jsx`
+→ Function: `onChange={(start, end) => fetchCalendarEvents(start, end)}`
+→ What happens: Updates `filterStartDate` and `filterEndDate` state and appends date query params to API request.
+→ Next: Calendar re-fetches and displays events matching the selected range.
+
+### Side Flow 2 — View Switching (Day / Week / Month)
+Trigger: User clicks Day, Week, or Month pill buttons
+→ File: `src/pages/CalendarPage.jsx`
+→ Function: `changeView(view)`
+→ What happens: Calls `calendarRef.current.getApi().changeView(view)` and updates `activeView` state.
+→ Next: FullCalendar switches layout dynamically between daily timeline, weekly columns, and monthly grid.
+
+### Side Flow 3 — Event Click & Details Modal
+Trigger: User clicks on an event block in the calendar
+→ File: `src/pages/CalendarPage.jsx` & `src/components/common/calendarEventModal.jsx`
+→ Function: `eventClick={(info) => { setSelectedEvent(info.event.extendedProps.originalEvent); setIsModalOpen(true); }}`
+→ What happens: Opens modal and triggers `httpService.get('/events/' + event.id)` to load full event details.
+→ Next: Displays modal with location, timing, links, and "View Details" button navigating to `/event/:id`.
+
+### Side Flow 4 — Hover Tooltip for Event Mode
+Trigger: User hovers mouse over an event block
+→ File: `src/pages/CalendarPage.jsx`
+→ Function: `eventDidMount` listener
+→ What happens: Evaluates `eventModeId` (1 = Physical, 2 = Online, 3 = Hybrid) and updates tooltip coordinates.
+→ Next: Shows a floating badge with mode icon and text following the cursor.
+
+### Side Flow 5 — Prev / Next / Today Calendar Navigation
+Trigger: User clicks previous (`<`), next (`>`), or "Today" button
+→ File: `src/pages/CalendarPage.jsx`
+→ Function: `handlePrev()`, `handleNext()`, `handleToday()`
+→ What happens: Calls FullCalendar API (`calendarApi.prev()`, `calendarApi.next()`, `calendarApi.today()`) and updates header title.
+→ Next: Calendar date advances or rewinds, updating displayed days.
+
+### Side Flow 6 — Loading Skeleton State
+Trigger: Network request in progress (`loading === true`)
+→ File: `src/pages/CalendarPage.jsx` & `src/components/common/calendarSkeleton.jsx`
+→ Function: `{loading && <CalendarSkeleton />}`
+→ What happens: Overlays shimmer placeholder over the calendar grid while data is fetching.
+→ Next: Skeleton unmounts as soon as `fetchCalendarEvents()` completes.
+
+### Side Flow 7 — Error Handling
+Trigger: API failure or network disconnection
+→ File: `src/pages/CalendarPage.jsx` & `src/services/httpService.js`
+→ Function: `try-catch` inside `fetchCalendarEvents()`
+→ What happens: Catches rejection, logs error to console, and resets `loading = false` in `finally`.
+→ Next: Calendar remains responsive without crashing the UI.
