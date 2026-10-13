@@ -1,0 +1,144 @@
+# CREATE EVENT: ADD & EDIT SPEAKERS & ATTENDEES (REACT)
+
+## OVERALL FLOW
+
+CreateEventPage.jsx (Wizard Screen)
+↓
+Tabs ("speakers" / "attendees")
+↓
+SpeakersForm.jsx / AttendeesForm.jsx
+↓
+SpeakerModal.jsx (Form & S3 Upload) / AttendeesForm.jsx (Modal & CSV)
+↓
+useBackend.js / httpService.js (Axios Client)
+↓
+POST /speakers & POST /attendees (OR PUT /speakers/:id)
+↓
+Response (success & data)
+↓
+State Update & Card Renders (onUpdateSpeakers / onUpdateAttendees)
+
+---
+
+## KT EXPLANATION
+
+### 1. src/pages/CreateEventPage.jsx
+Show: Tab navigation & embedding of `<SpeakersForm>` and `<AttendeesForm>`
+
+Explain:
+- `CreateEventPage` is the event creation wizard containing the overall `formData` state (`speakers: []`, `attendees: []`).
+- Switching to the `'speakers'` or `'attendees'` tab mounts `SpeakersForm` and `AttendeesForm` with `eventId` and update callbacks.
+- It receives updated participant lists via `onUpdateSpeakers` and `onUpdateAttendees` to keep the wizard in sync.
+
+↓
+
+### 2. src/components/forms/SpeakersForm.jsx
+Show: `useBackend('/speakers')` hook & `handleAddSpeakerClick()` / `handleEditSpeaker()`
+
+Explain:
+- Manages the speaker list for the event and fetches any requested speakers from the requestor.
+- Uses `useBackend('/speakers')` for pagination, automatic fetching, and exposing `updateSpeaker` and `deleteSpeaker`.
+- Clicking "Add Speaker" or "Edit" opens `SpeakerModal`, passing the current speaker data and event context.
+
+↓
+
+### 3. src/components/forms/SpeakerModal.jsx
+Show: `handleAddSpeaker()` and payload building
+
+Explain:
+- Provides user type selection (`<UserNameSelector>`), avatar cropping (`<SpeakerPhotoEditorModal>`), and document uploads via `uploadFileToS3()`.
+- Validates phone and email uniqueness using debounced calls before allowing submission.
+- Prepares the speaker payload (attaching `isedit: true` if the event is already live) and calls `updateSpeaker(payload)`.
+
+↓
+
+### 4. src/components/forms/AttendeesForm.jsx
+Show: `fetchAttendees()` and `handleAddAttendee()`
+
+Explain:
+- Handles individual attendee additions as well as bulk additions via CSV upload (`handleCSVUpload()`).
+- In `handleAddAttendee()`, it validates mobile formats, handles SeaUser lookup, and sets `isEditMode: true` if the event is published.
+- Dispatches the payload directly to the backend via `httpService.post('/attendees', payload)`.
+
+↓
+
+### 5. src/hooks/useBackend.js & src/services/httpService.js
+Show: `update` function in `useBackend.js` and `httpService.post()` / `put()`
+
+Explain:
+- `useBackend.update()` checks whether an ID exists: calls `httpService.put('/speakers/' + data.id)` for edits, or `httpService.post('/speakers')` for new creations.
+- `httpService` attaches the JWT token `Bearer ${accessToken}` from local storage and sends the Axios request.
+- Unwraps the backend payload and handles HTTP 401 redirection or global network errors.
+
+↓
+
+### 6. API & UI State Update
+Show: `onSaveSuccess()` in `SpeakersForm.jsx` and `onUpdateAttendees()` in `AttendeesForm.jsx`
+
+Explain:
+- Backend responds with `{ success: true, data: savedEntity, message: '...' }`.
+- `SpeakersForm` triggers `refreshSpeakers()` to re-query the latest speaker list and show a success toast.
+- `AttendeesForm` appends or updates the attendee in local state and notifies `CreateEventPage`.
+
+---
+
+## FILE ORDER TO SHOW
+
+1. `src/pages/CreateEventPage.jsx` — Wizard tabs & state wiring
+2. `src/components/forms/SpeakersForm.jsx` — Speaker card list & `useBackend('/speakers')`
+3. `src/components/forms/SpeakerModal.jsx` — Speaker form, S3 upload, and `handleAddSpeaker()`
+4. `src/components/forms/AttendeesForm.jsx` — Attendee list, CSV upload, and `handleAddAttendee()`
+5. `src/hooks/useBackend.js` & `src/services/httpService.js` — Axios request execution (`POST`/`PUT`/`DELETE`)
+
+---
+
+## IMPORTANT SIDE FLOWS
+
+### Side Flow 1 — Add / Edit Speaker
+Trigger: User clicks "Add Speaker" or card "Edit"
+→ File: `src/components/forms/SpeakerModal.jsx`
+→ Function: `handleAddSpeaker()`
+→ What happens: Uploads avatar/documents to S3, formats UAE phone (`971...`), attaches `isedit: true` if live, and calls `updateSpeaker(payload)`.
+→ Next: Calls `POST /speakers` (create) or `PUT /speakers/:id` (edit) and refreshes speaker cards.
+
+### Side Flow 2 — Delete Speaker
+Trigger: User clicks Delete on a speaker card
+→ File: `src/components/forms/SpeakersForm.jsx`
+→ Function: `handleConfirmDelete()`
+→ What happens: Calls `deleteSpeaker(speakerToDelete.id, { isedit: true })` from `useBackend`.
+→ Next: Sends `DELETE /speakers/:id` and removes card from list.
+
+### Side Flow 3 — Add / Edit Attendee
+Trigger: User clicks "Add Attendee" or card "Edit"
+→ File: `src/components/forms/AttendeesForm.jsx`
+→ Function: `handleAddAttendee()`
+→ What happens: Validates phone/email, constructs payload with `userType` and `isEditMode`, and calls `httpService.post('/attendees', payload)`.
+→ Next: Updates attendee list state and closes modal.
+
+### Side Flow 4 — Bulk Add Attendees via CSV
+Trigger: User uploads a `.csv` attendee file
+→ File: `src/components/forms/AttendeesForm.jsx`
+→ Function: `handleCSVUpload(event)`
+→ What happens: Parses CSV text using `FileReader`, validates columns (name, email, phone, organization), and checks event attendee capacity limit.
+→ Next: Merges parsed attendees into `attendeesList` and calls `onUpdateAttendees()`.
+
+### Side Flow 5 — Attendee Check-In
+Trigger: User clicks check-in on attendee card
+→ File: `src/components/forms/AttendeesForm.jsx`
+→ Function: `handleCheckIn(attendeeId)`
+→ What happens: Calls `httpService.post('/attendees/' + attendeeId + '/check-in')`.
+→ Next: Backend marks `checkedIn = true` with timestamp, and frontend re-fetches attendee list.
+
+### Side Flow 6 — Duplicate Phone / Email Check (Debounced)
+Trigger: User types email or phone in Speaker / Attendee modal
+→ File: `src/components/forms/SpeakerModal.jsx` / `AttendeesForm.jsx`
+→ Function: `checkEmailExists()` and `checkPhoneExists()`
+→ What happens: Debounced call fires `POST sea-users/emails-web` or `POST sea-users/phones-web`.
+→ Next: Displays inline validation warning if contact is already registered.
+
+### Side Flow 7 — Attendee Capacity Limit Check
+Trigger: Attempting to add speaker or attendee when event limit is reached
+→ File: `src/components/forms/SpeakersForm.jsx` / `AttendeesForm.jsx`
+→ Function: Capacity validation check against `eventAttendeeLimit`
+→ What happens: Compares `totalCount >= eventAttendeeLimit` (except for invited category).
+→ Next: Displays caution toast "Event attendee limit exceeded" and blocks modal opening.
